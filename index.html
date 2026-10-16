@@ -49,6 +49,17 @@
         <ol class="ticks" id="ticks"></ol>
       </div>
       <p class="next" id="next"></p>
+      <p class="foot" id="foot">
+        <span id="save-status" role="status">Saved in this browser</span>
+        <span aria-hidden="true">·</span>
+        <button type="button" class="link" id="edit">Set count</button>
+      </p>
+      <form class="edit" id="edit-form" hidden>
+        <label for="edit-input">Days</label>
+        <input id="edit-input" name="days" type="number" inputmode="numeric" min="0" max="99999" step="1" required>
+        <button type="submit" class="chip chip-solid">Save</button>
+        <button type="button" class="chip" id="edit-cancel">Cancel</button>
+      </form>
     </section>
   </div>
 

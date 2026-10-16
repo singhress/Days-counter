@@ -2,6 +2,8 @@
   'use strict';
 
   const STORE_KEY = 'days-counter';
+  const PROBE_KEY = 'days-counter:probe';
+  const MAX_DAYS = 99999;
   const TAU = Math.PI * 2;
 
   // Each level sits one equal step further along the heat scale, so the colour
@@ -49,6 +51,12 @@
   const confirmBox = $('confirm');
   const confirmYes = $('confirm-yes');
   const confirmNo = $('confirm-no');
+  const footEl = $('foot');
+  const statusEl = $('save-status');
+  const editBtn = $('edit');
+  const editForm = $('edit-form');
+  const editInput = $('edit-input');
+  const editCancel = $('edit-cancel');
   const themeMeta = document.querySelector('meta[name="theme-color"]');
   const canvas = $('waves');
   const ctx = canvas.getContext('2d');
@@ -59,26 +67,171 @@
     `hsla(${(((c.h % 360) + 360) % 360).toFixed(1)}, ${c.s.toFixed(1)}%, ${Math.min(c.l + lift, 96).toFixed(1)}%, ${a.toFixed(3)})`;
   const plural = (n) => (n === 1 ? 'day' : 'days');
 
-  /* ---------- State ---------- */
+  /* ---------- Saving ----------
+   * The count never resets on its own: only the Reset button sets it to 0.
+   * It is saved in localStorage on every change. Each save carries an
+   * `updated` time, so copies of the count (other open tabs, or the optional
+   * second store below) always settle on the most recent one.
+   */
 
-  const state = load();
+  // A host page can add a second store by defining this before script.js loads:
+  //   window.daysCounterRemote = {
+  //     load()          -> Promise<{ available: boolean, record?: object|null }>
+  //     save(record)    -> Promise<boolean>   (false = the store refused for good)
+  //     watch(callback) -> optional, calls back with records saved elsewhere
+  //   }
+  const remote = window.daysCounterRemote || null;
 
-  function load() {
+  function sanitize(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const count = Math.floor(Number(raw.count));
+    if (!Number.isFinite(count) || count < 0) return null;
+    const best = Math.max(count, Math.floor(Number(raw.best)) || 0);
+    const updated = Number(raw.updated) || 0;
+    return { count, best, updated };
+  }
+
+  function readLocal() {
     try {
-      const raw = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
-      const count = Math.max(0, Math.floor(Number(raw.count) || 0));
-      const best = Math.max(count, Math.floor(Number(raw.best) || 0));
-      return { count, best };
+      return sanitize(JSON.parse(localStorage.getItem(STORE_KEY)));
     } catch {
-      return { count: 0, best: 0 };
+      return null;
     }
   }
 
-  function save() {
+  function writeLocal() {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      const text = JSON.stringify(state);
+      localStorage.setItem(STORE_KEY, text);
+      return localStorage.getItem(STORE_KEY) === text;
     } catch {
-      // Storage can be blocked (private mode); the counter still works for this visit
+      return false;
+    }
+  }
+
+  function storageWorks() {
+    try {
+      localStorage.setItem(PROBE_KEY, '1');
+      localStorage.removeItem(PROBE_KEY);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const state = readLocal() || { count: 0, best: 0, updated: 0 };
+  let localOk = storageWorks();
+  let remoteOn = false; // the second store answered and accepts saves
+  let syncing = false; // waiting for the second store's first answer
+
+  function adopt(rec) {
+    state.count = rec.count;
+    state.best = rec.best;
+    state.updated = rec.updated;
+  }
+
+  // Take a newer count saved by another tab, so a stale tab never overwrites it
+  function pullLocal() {
+    const rec = readLocal();
+    if (rec && rec.updated > state.updated) {
+      adopt(rec);
+      return true;
+    }
+    return false;
+  }
+
+  function commit() {
+    state.updated = Math.max(Date.now(), state.updated + 1);
+    localOk = writeLocal();
+    pushRemote();
+    renderStatus();
+  }
+
+  let pushing = false;
+  let pushAgain = false;
+  async function pushRemote() {
+    if (!remoteOn) return;
+    if (pushing) {
+      pushAgain = true; // a burst of taps becomes one more save after this one
+      return;
+    }
+    pushing = true;
+    try {
+      if ((await remote.save({ ...state })) === false) {
+        remoteOn = false;
+        renderStatus();
+      }
+    } catch {
+      // The local copy still holds the count; the next change tries again
+    }
+    pushing = false;
+    if (pushAgain) {
+      pushAgain = false;
+      pushRemote();
+    }
+  }
+
+  function onRemoteRecord(raw) {
+    const rec = sanitize(raw);
+    if (rec && rec.updated > state.updated) {
+      adopt(rec);
+      localOk = writeLocal();
+      render();
+    }
+  }
+
+  async function connectRemote() {
+    setSyncing(true);
+    let answer = null;
+    try {
+      const giveUp = new Promise((resolve) => setTimeout(resolve, 8000, null));
+      answer = await Promise.race([remote.load(), giveUp]);
+    } catch {
+      answer = null;
+    }
+    if (answer && answer.available) {
+      remoteOn = true;
+      pullLocal();
+      const rec = sanitize(answer.record);
+      if (rec && rec.updated > state.updated) {
+        adopt(rec);
+        localOk = writeLocal();
+        render();
+        msgEl.textContent = state.count ? pickLine(heatOf(state.count).i, false) : LINES[0][0];
+      } else if (rec ? state.updated > rec.updated : state.count > 0 || state.best > 0) {
+        pushRemote();
+      }
+      if (remote.watch) remote.watch(onRemoteRecord);
+    }
+    setSyncing(false);
+  }
+
+  function setSyncing(on) {
+    syncing = on;
+    dial.disabled = on;
+    dial.setAttribute('aria-busy', String(on));
+    render();
+  }
+
+  function renderStatus() {
+    let text = 'Saved in this browser';
+    if (syncing) text = 'Loading your saved days…';
+    else if (remoteOn) text = 'Saved to your account';
+    else if (!localOk) text = 'Not saved. This browser is blocking storage, so the count will be lost when you close the page.';
+    if (statusEl.textContent !== text) statusEl.textContent = text;
+    statusEl.classList.toggle('warn', !syncing && !remoteOn && !localOk);
+  }
+
+  // Ask the browser not to clear this site's data when the device runs low on space
+  let persistAsked = false;
+  function askPersist() {
+    if (persistAsked) return;
+    persistAsked = true;
+    try {
+      const store = navigator.storage;
+      if (store && store.persist) store.persisted().then((kept) => kept || store.persist()).catch(() => {});
+    } catch {
+      // Not supported here; localStorage still works
     }
   }
 
@@ -132,8 +285,9 @@
     unitEl.textContent = plural(count);
     tierEl.textContent = TIERS[heat.i].name;
     bestEl.textContent = best;
-    undoBtn.disabled = count === 0;
-    resetBtn.disabled = count === 0;
+    undoBtn.disabled = syncing || count === 0;
+    resetBtn.disabled = syncing || count === 0;
+    editBtn.disabled = syncing;
     dial.setAttribute('aria-label', `Add a day. ${count} ${plural(count)} so far.`);
 
     nextEl.replaceChildren();
@@ -157,6 +311,7 @@
     root.style.setProperty('--p', heat.p.toFixed(4));
     if (themeMeta) themeMeta.setAttribute('content', bg);
 
+    renderStatus();
     target = heat;
     if (reduceMotion.matches) drawStill();
   }
@@ -199,9 +354,12 @@
   /* ---------- Actions ---------- */
 
   function addDay() {
+    if (syncing) return;
+    pullLocal();
     state.count += 1;
     if (state.count > state.best) state.best = state.count;
-    save();
+    commit();
+    askPersist();
 
     const heat = heatOf(state.count);
     const milestone = TIERS[heat.i].at === state.count;
@@ -214,9 +372,11 @@
   }
 
   function removeDay() {
-    if (!state.count) return;
+    if (syncing) return;
+    pullLocal();
+    if (!state.count) return render();
     state.count -= 1;
-    save();
+    commit();
     render();
     msgEl.textContent = state.count ? 'One day removed.' : LINES[0][0];
     kick = Math.min(kick + 3, 34);
@@ -235,8 +395,10 @@
   }
 
   function resetCount() {
+    if (syncing) return;
+    pullLocal();
     state.count = 0;
-    save();
+    commit();
     render();
     msgEl.textContent = state.best
       ? `Back to zero. Your best of ${state.best} ${plural(state.best)} is saved.`
@@ -244,13 +406,59 @@
     closeConfirm();
   }
 
+  function openEdit() {
+    pullLocal();
+    render();
+    editInput.value = state.count;
+    footEl.hidden = true;
+    editForm.hidden = false;
+    editInput.focus();
+    editInput.select();
+  }
+
+  function closeEdit() {
+    editForm.hidden = true;
+    footEl.hidden = false;
+    editBtn.focus();
+  }
+
+  function saveEdit(e) {
+    e.preventDefault();
+    const n = Math.floor(Number(editInput.value));
+    if (syncing || !Number.isFinite(n) || n < 0 || n > MAX_DAYS) return;
+    pullLocal();
+    state.count = n;
+    if (n > state.best) state.best = n;
+    commit();
+    render();
+    msgEl.textContent = `Count set to ${n} ${plural(n)}.`;
+    pulse(heatOf(n), false);
+    closeEdit();
+  }
+
   dial.addEventListener('click', addDay);
   undoBtn.addEventListener('click', removeDay);
   resetBtn.addEventListener('click', openConfirm);
   confirmNo.addEventListener('click', closeConfirm);
   confirmYes.addEventListener('click', resetCount);
+  editBtn.addEventListener('click', openEdit);
+  editCancel.addEventListener('click', closeEdit);
+  editForm.addEventListener('submit', saveEdit);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !confirmBox.hidden) closeConfirm();
+    if (e.key !== 'Escape') return;
+    if (!confirmBox.hidden) closeConfirm();
+    if (!editForm.hidden) closeEdit();
+  });
+
+  // Stay in step with other tabs, and with this tab after it was in the background
+  window.addEventListener('storage', (e) => {
+    if (e.key === STORE_KEY && pullLocal()) render();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && pullLocal()) render();
+  });
+  window.addEventListener('pageshow', () => {
+    if (pullLocal()) render();
   });
 
   /* ---------- Waves ---------- */
@@ -435,4 +643,5 @@
   window.addEventListener('resize', resize);
   reduceMotion.addEventListener?.('change', setMotion);
   if (document.fonts) document.fonts.ready.then(() => reduceMotion.matches && drawStill());
+  if (remote) connectRemote();
 })();

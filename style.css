@@ -10,6 +10,7 @@
   --line: hsl(225, 14%, 24%);
   --danger: hsl(2, 72%, 47%);
   --on-danger: hsl(0, 0%, 100%);
+  --warn: hsl(38, 95%, 62%);
 
   /* Heat tokens are rewritten by script.js on every tap */
   --heat: hsl(215, 16%, 62%);
@@ -141,6 +142,14 @@ body {
   border-color: var(--fg);
 }
 
+.chip-solid {
+  border-color: var(--fg);
+  background: var(--fg);
+  color: var(--bg);
+  font-weight: 600;
+  text-shadow: none;
+}
+
 :focus-visible {
   outline: 2px solid var(--heat-hi);
   outline-offset: 3px;
@@ -195,8 +204,12 @@ body {
   transition: transform 0.15s ease, color 0.6s ease;
 }
 
-.dial:active {
+.dial:active:not(:disabled) {
   transform: scale(0.97);
+}
+
+.dial:disabled {
+  cursor: progress;
 }
 
 .dial:focus-visible {
@@ -351,6 +364,78 @@ body {
   color: var(--fg);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* Save status and manual count */
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 4px 8px;
+  max-width: 40ch;
+  margin: 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.foot .warn {
+  color: var(--warn);
+}
+
+.link {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+.link:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.edit {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.edit input {
+  width: 7.5em;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg);
+  font: 600 15px/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.edit input::-webkit-inner-spin-button,
+.edit input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
