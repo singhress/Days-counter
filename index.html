@@ -103,6 +103,7 @@
         <input id="signin-password" name="password" type="password" autocomplete="current-password" required>
       </label>
       <button type="submit" class="chip chip-solid sheet-submit">Sign in</button>
+      <button type="button" class="link sheet-anyway" id="resend" hidden>Send the confirmation email again</button>
       <p class="sheet-links">
         <button type="button" class="link" data-view="signup">Create an account</button>
         <button type="button" class="link" data-view="forgot">Forgot password?</button>
@@ -115,8 +116,8 @@
         <input id="signup-email" name="email" type="email" autocomplete="email" required>
       </label>
       <label class="field" for="signup-password">Password
-        <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="6" required>
-        <span class="field-hint">At least 6 characters</span>
+        <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+        <span class="field-hint">At least 8 characters</span>
       </label>
       <button type="submit" class="chip chip-solid sheet-submit">Create account</button>
       <p class="sheet-links">
@@ -138,8 +139,8 @@
     <form class="sheet-view" id="view-recovery" novalidate hidden>
       <p class="sheet-lead">Choose a new password for your account.</p>
       <label class="field" for="recovery-password">New password
-        <input id="recovery-password" name="password" type="password" autocomplete="new-password" minlength="6" required>
-        <span class="field-hint">At least 6 characters</span>
+        <input id="recovery-password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+        <span class="field-hint">At least 8 characters</span>
       </label>
       <button type="submit" class="chip chip-solid sheet-submit">Save new password</button>
     </form>
@@ -153,5 +154,8 @@
   </dialog>
 
   <script src="script.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok" crossorigin="anonymous"></script>
+  <script src="config.js"></script>
+  <script src="account.js"></script>
 </body>
 </html>

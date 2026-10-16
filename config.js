@@ -4,7 +4,7 @@
 // Leave them empty to run the counter without accounts.
 window.DAYS_COUNTER_CONFIG = {
   // Project URL, like https://abcdefghijklmnop.supabase.co
-  supabaseUrl: '',
+  supabaseUrl: 'https://gjzzkebydiwlsxoocxnb.supabase.co',
   // Publishable key (starts with sb_publishable_) or the legacy anon key
-  supabaseKey: '',
+  supabaseKey: 'sb_publishable_MJ91_-DGOWUl8yLKIJ19SQ_dWB8zleX',
 };
