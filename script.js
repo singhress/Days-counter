@@ -842,7 +842,20 @@
     if (pullLocal()) render();
   });
 
-  /* ---------- Waves ---------- */
+  /* ---------- Waves ----------
+   * Drawn on one canvas behind the page, and kept light enough for phones:
+   * the canvas uses at most 1.25 device pixels per CSS pixel, glows are
+   * layered strokes instead of canvas shadows, the loop runs at 60 fps only
+   * while something is moving (24 fps for the slow idle breathing), idle
+   * frames clear only the area around the circles, and it stops while the
+   * counter is scrolled out of view or the tab is hidden.
+   */
+
+  const MAX_DPR = 1.25;
+  const ACTIVE_FRAME = 1000 / 60;
+  const IDLE_FRAME = 1000 / 24;
+  const MAX_RIPPLES = 16;
+  const MAX_SPARKS = 140;
 
   let W = 0;
   let H = 0;
@@ -854,25 +867,44 @@
   let auraWobble = 0; // the aura's flicker, fast while restless
   let running = false;
   let lastTime = 0;
+  let lastDraw = 0;
+  let onScreen = true;
+  let clearedWide = true; // the last frame drew beyond the circles
   const ripples = [];
   const sparks = [];
 
+  // Where the dial and the aura's circle are on screen. Measured when the
+  // layout or scroll position changes, not on every frame.
+  const box = { cx: 0, cy: 0, R: 0, ox: 0, oy: 0, r: 0 };
+  function measure() {
+    clearedWide = true; // the circles may have moved: clear everything next frame
+    const d = dial.getBoundingClientRect();
+    box.cx = d.left + d.width / 2;
+    box.cy = d.top + d.height / 2;
+    box.R = d.width / 2 + 3;
+    const o = orbEl.getBoundingClientRect();
+    box.ox = o.left + o.width / 2;
+    box.oy = o.top + o.height / 2;
+    box.r = o.width / 2;
+  }
+
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
     W = canvas.clientWidth;
     H = canvas.clientHeight;
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    measure();
     if (reduceMotion.matches) drawStill();
   }
 
-  // A circle whose radius rides two sine waves, so the rim looks like moving water
-  function ring(cx, cy, r, amp, lobes, ph) {
-    const n = 200;
+  // A circle whose radius rides two sine waves, so the rim looks like moving
+  // water. Builds the path only; callers stroke it, as often as they like.
+  function ring(cx, cy, r, amp, lobes, ph, points) {
     ctx.beginPath();
-    for (let j = 0; j <= n; j++) {
-      const a = (j / n) * TAU;
+    for (let j = 0; j <= points; j++) {
+      const a = (j / points) * TAU;
       const d = amp * (0.62 * Math.sin(lobes * a + ph) + 0.38 * Math.sin((lobes + 3) * a - ph * 1.6));
       const x = cx + (r + d) * Math.cos(a);
       const y = cy + (r + d) * Math.sin(a);
@@ -887,7 +919,7 @@
     if (reduceMotion.matches) return;
 
     const t = Math.min(heat.t, 1.35);
-    const waves = milestone ? 6 : 1 + Math.round(t * 3);
+    const waves = milestone ? 5 : 1 + Math.round(t * 2);
     for (let k = 0; k < waves; k++) {
       ripples.push({
         age: -k * 0.11,
@@ -899,7 +931,7 @@
       });
     }
 
-    const sparkCount = milestone ? 64 : Math.round(t * t * 14);
+    const sparkCount = milestone ? 48 : Math.round(t * t * 10);
     for (let k = 0; k < sparkCount; k++) {
       sparks.push({
         a: Math.random() * TAU,
@@ -910,8 +942,9 @@
         size: 1 + Math.random() * 2.2,
       });
     }
-    if (ripples.length > 40) ripples.splice(0, ripples.length - 40);
-    if (sparks.length > 320) sparks.splice(0, sparks.length - 320);
+    if (ripples.length > MAX_RIPPLES) ripples.splice(0, ripples.length - MAX_RIPPLES);
+    if (sparks.length > MAX_SPARKS) sparks.splice(0, sparks.length - MAX_SPARKS);
+    setMotion();
   }
 
   function step(dt) {
@@ -937,16 +970,36 @@
     }
   }
 
+  // Ripples, sparks, a fresh tap or a colour still easing in need full frame rate
+  function moving() {
+    return (
+      ripples.length > 0 ||
+      sparks.length > 0 ||
+      kick > 0.5 ||
+      Math.abs(target.h - shown.h) > 0.3 ||
+      Math.abs(target.calmH - shown.calmH) > 0.3
+    );
+  }
+
   function draw() {
-    const rect = dial.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const R = rect.width / 2 + 3;
+    const { cx, cy, R } = box;
     const t = Math.min(shown.t, 1.35);
     const lobes = 5 + target.i; // more crests around the rim at higher levels
     const amp = 1.2 + 4.5 * t + kick;
 
-    ctx.clearRect(0, 0, W, H);
+    // Ripples and sparks travel across the screen; otherwise everything stays
+    // close to the two circles, so only that area needs clearing
+    const wide = ripples.length > 0 || sparks.length > 0;
+    if (wide || clearedWide) {
+      ctx.clearRect(0, 0, W, H);
+    } else {
+      const m = R + 70;
+      const o = box.r * 2.6;
+      const x0 = Math.min(cx - m, box.ox - o);
+      const y0 = Math.min(cy - m, box.oy - o);
+      ctx.clearRect(x0, y0, Math.max(cx + m, box.ox + o) - x0, Math.max(cy + m, box.oy + o) - y0);
+    }
+    clearedWide = wide;
     ctx.globalCompositeOperation = 'lighter';
 
     for (const rp of ripples) {
@@ -955,38 +1008,40 @@
       const out = 1 - Math.pow(1 - k, 3);
       ctx.lineWidth = Math.max(0.6, rp.width * (1 - k));
       ctx.strokeStyle = hsla(shown, Math.pow(1 - k, 1.6) * (0.55 + 0.3 * Math.min(t, 1)), 8);
-      ring(cx, cy, R + rp.reach * out, rp.amp * (1 - k) + 1, lobes, phase * 1.4 + rp.seed);
+      ring(cx, cy, R + rp.reach * out, rp.amp * (1 - k) + 1, lobes, phase * 1.4 + rp.seed, 72);
       ctx.stroke();
     }
 
-    // Soft halo under the rim
-    ctx.lineWidth = 12 + 22 * t;
-    ctx.strokeStyle = hsla(shown, 0.07 + 0.16 * t);
-    ring(cx, cy, R, amp, lobes, phase);
+    // The rim, built once and stroked in layers: a wide soft halo, a glow,
+    // then the bright line itself
+    ring(cx, cy, R, amp, lobes, phase, 120);
+    ctx.lineWidth = 14 + 24 * t;
+    ctx.strokeStyle = hsla(shown, 0.06 + 0.12 * t);
     ctx.stroke();
-
-    // The rim itself
-    ctx.shadowBlur = 8 + 30 * t;
-    ctx.shadowColor = hsla(shown, 0.9);
+    ctx.lineWidth = 6 + 10 * t;
+    ctx.strokeStyle = hsla(shown, 0.16 + 0.2 * t);
+    ctx.stroke();
     ctx.lineWidth = 2.5 + 2.5 * t;
     ctx.strokeStyle = hsla(shown);
-    ring(cx, cy, R, amp, lobes, phase);
     ctx.stroke();
-    ctx.shadowBlur = 0;
 
     // A thin bright trace moving against the rim
     ctx.lineWidth = 1.2;
     ctx.strokeStyle = hsla(shown, 0.55, 22);
-    ring(cx, cy, R, amp * 0.6, lobes + 2, -phase * 0.8 + 1.7);
+    ring(cx, cy, R, amp * 0.6, lobes + 2, -phase * 0.8 + 1.7, 120);
     ctx.stroke();
 
-    for (const sp of sparks) {
-      const k = sp.age / sp.life;
-      const d = R + sp.d;
-      ctx.fillStyle = hsla(shown, (1 - k) * 0.9, 20);
-      ctx.beginPath();
-      ctx.arc(cx + Math.cos(sp.a) * d, cy + Math.sin(sp.a) * d, sp.size * (1 - k * 0.5), 0, TAU);
-      ctx.fill();
+    if (sparks.length) {
+      ctx.fillStyle = hsla(shown, 1, 20);
+      for (const sp of sparks) {
+        const k = sp.age / sp.life;
+        const d = R + sp.d;
+        ctx.globalAlpha = (1 - k) * 0.9;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(sp.a) * d, cy + Math.sin(sp.a) * d, sp.size * (1 - k * 0.5), 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
     }
 
     drawAura(t);
@@ -996,11 +1051,8 @@
   // The aura, in its own small circle beside the dial. Restless at first
   // (quick flicker, ragged edge), then calmer, slower, smoother and brighter
   function drawAura(t) {
-    const rect = orbEl.getBoundingClientRect();
-    if (!rect.width) return;
-    const ox = rect.left + rect.width / 2;
-    const oy = rect.top + rect.height / 2;
-    const r = rect.width / 2;
+    const { ox, oy, r } = box;
+    if (!r) return;
     const calm = Math.min(t, 1.3) / 1.3;
     const restless = 1 - calm;
     const color = { h: shown.calmH, s: shown.calmS, l: shown.calmL };
@@ -1022,7 +1074,7 @@
 
     ctx.lineWidth = 2;
     ctx.strokeStyle = hsla(color, 0.45 + 0.4 * calm, 8);
-    ring(ox, oy, r * 1.02, 0.6 + restless * r * 0.12, 3, auraWobble);
+    ring(ox, oy, r * 1.02, 0.6 + restless * r * 0.12, 3, auraWobble, 48);
     ctx.stroke();
   }
 
@@ -1031,25 +1083,36 @@
     ripples.length = 0;
     sparks.length = 0;
     kick = 0;
+    measure();
     draw();
   }
 
   function tick(now) {
     if (!running) return;
+    // Out of view with nothing left to finish: clear up and stop until it's back
+    if (!onScreen && !ripples.length && !sparks.length) {
+      running = false;
+      ctx.clearRect(0, 0, W, H);
+      return;
+    }
+    requestAnimationFrame(tick);
+    if (now - lastDraw < (moving() ? ACTIVE_FRAME : IDLE_FRAME) - 2) return;
     const dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;
+    lastDraw = now;
     step(dt);
     draw();
-    requestAnimationFrame(tick);
   }
 
   function setMotion() {
     if (reduceMotion.matches) {
       running = false;
       drawStill();
-    } else if (!running) {
+    } else if (!running && onScreen) {
       running = true;
       lastTime = performance.now();
+      lastDraw = 0;
+      measure();
       requestAnimationFrame(tick);
     }
   }
@@ -1063,8 +1126,18 @@
   resize();
   setMotion();
   window.addEventListener('resize', resize);
+  window.addEventListener('scroll', measure, { passive: true });
   reduceMotion.addEventListener?.('change', setMotion);
-  if (document.fonts) document.fonts.ready.then(() => reduceMotion.matches && drawStill());
+  if (document.fonts) document.fonts.ready.then(() => (reduceMotion.matches ? drawStill() : measure()));
+  // The counter moves when text around it changes height
+  if (window.ResizeObserver) new ResizeObserver(() => measure()).observe($('stage'));
+  // Pause the waves while the counter is scrolled out of view
+  if (window.IntersectionObserver) {
+    new IntersectionObserver((entries) => {
+      onScreen = entries[entries.length - 1].isIntersecting;
+      if (onScreen) setMotion();
+    }).observe($('stage'));
+  }
 
   // Lets account.js (or another host) plug in an account store
   window.daysCounter = {

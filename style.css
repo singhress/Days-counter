@@ -51,7 +51,6 @@ body {
   color: var(--fg);
   font: 400 15px/1.5 var(--font-body);
   overflow-x: hidden;
-  transition: background-color 0.8s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -176,18 +175,20 @@ body {
   min-height: calc(var(--dial) + 72px);
 }
 
+/* Soft glow behind the dial. A gradient rather than a blur filter, which is
+   much cheaper for phones to draw */
 .aura {
   position: absolute;
-  inset: 0;
-  width: calc(var(--dial) * 1.3);
-  height: calc(var(--dial) * 1.3);
-  margin: auto;
+  top: 50%;
+  left: 50%;
+  /* Never wider than the screen: anything wider makes phones zoom the page out */
+  width: min(calc(var(--dial) * 1.75), 100vw);
+  height: min(calc(var(--dial) * 1.75), 100vw);
+  transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: var(--heat);
+  background: radial-gradient(closest-side, var(--heat) 30%, transparent);
   opacity: var(--aura);
-  filter: blur(56px);
   pointer-events: none;
-  transition: background-color 0.8s ease, opacity 0.8s ease;
 }
 
 .dial {
@@ -212,7 +213,7 @@ body {
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
-  transition: transform 0.15s ease, color 0.6s ease;
+  transition: transform 0.15s ease;
 }
 
 .dial:active:not(:disabled) {
@@ -233,7 +234,6 @@ body {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   text-shadow: 0 0 calc(var(--glow) * 1px) var(--heat);
-  transition: text-shadow 0.6s ease;
 }
 
 .count[data-len="3"] { font-size: calc(var(--dial) * 0.25); }
@@ -279,7 +279,6 @@ body {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
   cursor: pointer;
   touch-action: manipulation;
-  transition: background-color 0.6s ease;
 }
 
 .orb-label {
@@ -338,9 +337,8 @@ body {
 
 /* Keeps text readable when ripples pass underneath */
 .bar,
-.info,
-.changes {
-  text-shadow: 0 0 4px var(--bg), 0 0 14px var(--bg);
+.info {
+  text-shadow: 0 0 6px var(--bg);
 }
 
 .info {
@@ -376,15 +374,19 @@ body {
   position: relative;
   height: 8px;
   border-radius: 999px;
+  container-type: inline-size;
 }
 
+/* Dims the part of the track not reached yet. Clipped rather than resized,
+   so moving it doesn't make the page recalculate its layout */
 .track-lock {
   position: absolute;
-  inset: -1px -1px -1px calc(var(--p) * 100%);
-  border-radius: 0 999px 999px 0;
+  inset: -1px;
+  border-radius: 999px;
   background: rgba(8, 9, 12, 0.8);
   background: color-mix(in srgb, var(--bg) 80%, transparent);
-  transition: left 0.5s ease;
+  clip-path: inset(0 0 0 calc(var(--p) * 100%));
+  transition: clip-path 0.5s ease;
 }
 
 .track-dot {
@@ -397,7 +399,16 @@ body {
   border-radius: 50%;
   background: var(--heat);
   box-shadow: 0 0 0 3px var(--bg), 0 0 16px var(--heat);
-  transition: left 0.5s ease, background-color 0.6s ease;
+}
+
+/* Slide with transform where container units exist (cqw is the track's
+   width): cheaper to animate than left, which recalculates layout */
+@supports (width: 1cqw) {
+  .track-dot {
+    left: 0;
+    transform: translateX(calc(var(--p) * 100cqw));
+    transition: transform 0.5s ease;
+  }
 }
 
 .ticks {
