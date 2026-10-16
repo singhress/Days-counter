@@ -69,6 +69,7 @@
   const countEl = $('count');
   const unitEl = $('unit');
   const auraNameEl = $('aura-name');
+  const orbEl = $('orb');
   const tierEl = $('tier');
   const msgEl = $('msg');
   const nextEl = $('next');
@@ -626,8 +627,9 @@
     undoBtn.disabled = busy || count === 0;
     resetBtn.disabled = busy || count === 0;
     editBtn.disabled = busy;
-    auraNameEl.textContent = `${AURA[heat.i].name} aura`;
-    dial.setAttribute('aria-label', `Add a day. ${count} ${plural(count)} so far. ${AURA[heat.i].name} aura.`);
+    auraNameEl.textContent = AURA[heat.i].name;
+    orbEl.setAttribute('aria-label', `Aura: ${AURA[heat.i].name}. What does this mean?`);
+    dial.setAttribute('aria-label', `Add a day. ${count} ${plural(count)} so far.`);
 
     nextEl.replaceChildren();
     if (next) {
@@ -803,6 +805,16 @@
   editForm.addEventListener('submit', saveEdit);
   keepAccountBtn.addEventListener('click', () => choose('account'));
   keepDeviceBtn.addEventListener('click', () => choose('device'));
+  orbEl.addEventListener('click', () => {
+    const i = tierIndex(state.count);
+    const next = AURA[i + 1];
+    showToast([
+      `${AURA[i].name} aura`,
+      next
+        ? `It calms as your streak grows. Next: ${next.name} at day ${TIERS[i + 1].at}.`
+        : 'As calm as it gets. Keep it glowing.',
+    ]);
+  });
   teaserBtn.addEventListener('click', () => {
     const current = changesEl.querySelector('.step.current') || changesEl;
     current.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
@@ -937,32 +949,6 @@
     ctx.clearRect(0, 0, W, H);
     ctx.globalCompositeOperation = 'lighter';
 
-    // Aura: soft light around the dial. Restless at first (quick, flickering,
-    // ragged), then calmer, slower, smoother and brighter as the days add up
-    const calm = Math.min(t, 1.3) / 1.3;
-    const restless = 1 - calm;
-    const auraColor = { h: shown.calmH, s: shown.calmS, l: shown.calmL };
-    const breath = 0.5 + 0.5 * Math.sin(auraPhase);
-    const flicker = restless * (0.5 * Math.sin(auraWobble * 2.9) + 0.5 * Math.sin(auraWobble * 5.3 + 1.1));
-    const inner = R * 0.9;
-    const peak = R * (1.16 + 0.05 * breath + 0.03 * flicker);
-    const outer = R * (1.6 + 0.35 * calm + 0.1 * breath);
-    const strength = (0.16 + 0.42 * calm) * (0.8 + 0.2 * breath + 0.15 * flicker);
-    const glow = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
-    glow.addColorStop(0, hsla(auraColor, 0));
-    glow.addColorStop(Math.min(0.95, (peak - inner) / (outer - inner)), hsla(auraColor, Math.max(0, strength)));
-    glow.addColorStop(1, hsla(auraColor, 0));
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, outer, 0, TAU);
-    ctx.fill();
-
-    // The aura's edge: ragged while restless, a clean, slow circle once calm
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = hsla(auraColor, 0.25 + 0.35 * calm, 10);
-    ring(cx, cy, peak, 1 + restless * R * 0.05, 3, auraWobble);
-    ctx.stroke();
-
     for (const rp of ripples) {
       if (rp.age < 0) continue;
       const k = rp.age / rp.life;
@@ -1003,7 +989,41 @@
       ctx.fill();
     }
 
+    drawAura(t);
     ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // The aura, in its own small circle beside the dial. Restless at first
+  // (quick flicker, ragged edge), then calmer, slower, smoother and brighter
+  function drawAura(t) {
+    const rect = orbEl.getBoundingClientRect();
+    if (!rect.width) return;
+    const ox = rect.left + rect.width / 2;
+    const oy = rect.top + rect.height / 2;
+    const r = rect.width / 2;
+    const calm = Math.min(t, 1.3) / 1.3;
+    const restless = 1 - calm;
+    const color = { h: shown.calmH, s: shown.calmS, l: shown.calmL };
+    const breath = 0.5 + 0.5 * Math.sin(auraPhase);
+    const flicker = restless * (0.5 * Math.sin(auraWobble * 2.9) + 0.5 * Math.sin(auraWobble * 5.3 + 1.1));
+    const inner = r * 0.8;
+    const peak = r * (1.08 + 0.06 * breath + 0.05 * flicker);
+    const outer = r * (1.7 + 0.5 * calm + 0.15 * breath);
+    const strength = (0.2 + 0.5 * calm) * (0.8 + 0.2 * breath + 0.2 * flicker);
+
+    const glow = ctx.createRadialGradient(ox, oy, inner, ox, oy, outer);
+    glow.addColorStop(0, hsla(color, 0));
+    glow.addColorStop(Math.min(0.95, (peak - inner) / (outer - inner)), hsla(color, Math.max(0, strength)));
+    glow.addColorStop(1, hsla(color, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(ox, oy, outer, 0, TAU);
+    ctx.fill();
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = hsla(color, 0.45 + 0.4 * calm, 8);
+    ring(ox, oy, r * 1.02, 0.6 + restless * r * 0.12, 3, auraWobble);
+    ctx.stroke();
   }
 
   function drawStill() {

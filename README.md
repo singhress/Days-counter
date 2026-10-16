@@ -21,7 +21,7 @@ After 365 the colour keeps whitening until day 1000. Higher levels also add more
 
 ## Aura
 
-Around the circle sits a soft aura that moves the other way from the heat: as the circle gets hotter, the aura gets calmer. It starts restless (a murky orange that flickers fast, with a ragged edge) and with each level turns cooler and brighter, breathes more slowly and settles into a smooth circle. By a year it glows a deep, still blue. Its name shows inside the circle.
+A small circle beside the counter shows your aura. It moves the other way from the heat: as the big circle gets hotter, the aura gets calmer. It starts restless (a murky orange that flickers fast, with a ragged edge) and with each level turns cooler and brighter, breathes more slowly and settles into a smooth circle. By a year it glows a deep, still blue. Its name shows inside it, and tapping it explains what comes next.
 
 | Days | Aura      |
 | ---- | --------- |

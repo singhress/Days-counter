@@ -32,11 +32,16 @@
 
       <main class="stage">
         <div class="aura" aria-hidden="true"></div>
-        <button type="button" class="dial" id="dial" aria-label="Add a day">
-          <span class="count" id="count" data-len="1">0</span>
-          <span class="unit" id="unit">days</span>
-          <span class="aura-name" id="aura-name">Restless aura</span>
-        </button>
+        <div class="dial-wrap">
+          <button type="button" class="dial" id="dial" aria-label="Add a day">
+            <span class="count" id="count" data-len="1">0</span>
+            <span class="unit" id="unit">days</span>
+          </button>
+          <button type="button" class="orb" id="orb" aria-label="Aura: Restless. What does this mean?">
+            <span class="orb-label">Aura</span>
+            <span class="orb-name" id="aura-name">Restless</span>
+          </button>
+        </div>
         <p class="toast" id="toast" aria-hidden="true"></p>
       </main>
 
