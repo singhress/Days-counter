@@ -75,7 +75,7 @@ With a Supabase project connected, people can create an account with their email
 ### Setting up Supabase
 
 1. **Add your project details.** In the Supabase dashboard, click **Connect** (or open **Project Settings → API Keys**). Copy the **Project URL** and the **publishable key** (`sb_publishable_…`; the legacy `anon` key also works) into `config.js`. Both are safe to publish. Never put a `service_role` or `sb_secret_` key in this repo.
-2. **Create the table.** The database setup is in the two files in `supabase/migrations/`.
+2. **Create the table (recommended).** Saving works without this step: until the table exists, each person's count is kept in their account's own profile data (`user_metadata`). The table adds stricter rules: it keeps whichever copy changed most recently on the server, so an old device can never overwrite a newer count. Once it exists, the site switches to it by itself. The database setup is in the two files in `supabase/migrations/`.
    - With the GitHub integration (**Project Settings → Integrations → GitHub**), check that **Working directory** is `.`, the production branch is `master`, and **Deploy to production** is on. The migrations then run when they reach `master`. You can follow them under **Branches → View logs**, and the `counters` table appears in **Table Editor**.
    - Otherwise, open **SQL Editor**, paste each file in order (oldest date first) and run it. Both are safe to run more than once.
    - Never edit a migration that has already run. Supabase skips files it has applied before, so put later changes in a new file with a later date.

@@ -69,26 +69,80 @@
     return Object.assign(new Error((error && error.message) || 'Request failed'), { kind });
   }
 
+  // Until the counters table exists (see supabase/migrations), the count is kept
+  // in the account's own profile data (user_metadata), which every project has.
+  // Only the signed-in person can change their own profile data.
+  const META_KEY = 'days_counter';
+
+  function fromMeta(person) {
+    const saved = person && person.user_metadata && person.user_metadata[META_KEY];
+    if (!saved || typeof saved !== 'object' || saved.count == null) return null;
+    return { count: saved.count, best: saved.best, updated: Number(saved.updated) || 0 };
+  }
+
   function accountFor(person) {
+    let tableReady = null; // null until the first request finds out
+
+    async function loadRow() {
+      const { data, error } = await client
+        .from('counters')
+        .select('days, best, changed_ms')
+        .eq('user_id', person.id)
+        .maybeSingle();
+      if (error) throw storeError(error);
+      return toRecord(data);
+    }
+
+    async function saveRow(record) {
+      const { data, error } = await client.rpc('save_counter', {
+        p_days: record.count,
+        p_best: record.best,
+        p_changed_ms: Math.round(record.updated),
+      });
+      if (error) throw storeError(error);
+      return toRecord(Array.isArray(data) ? data[0] : data);
+    }
+
+    async function loadMeta() {
+      const { data, error } = await client.auth.getUser();
+      if (error) throw storeError(error);
+      return fromMeta(data.user);
+    }
+
+    async function saveMeta(record) {
+      const value = { count: record.count, best: record.best, updated: Math.round(record.updated) };
+      const { data, error } = await client.auth.updateUser({ data: { [META_KEY]: value } });
+      if (error) throw storeError(error);
+      return fromMeta(data.user) || value;
+    }
+
     return {
       id: person.id,
       async load() {
-        const { data, error } = await client
-          .from('counters')
-          .select('days, best, changed_ms')
-          .eq('user_id', person.id)
-          .maybeSingle();
-        if (error) throw storeError(error);
-        return toRecord(data);
+        // Try the table every time, so it takes over as soon as it's created
+        try {
+          const row = await loadRow();
+          tableReady = true;
+          // An empty row may mean the table is new: bring over the profile copy
+          return row || (await loadMeta());
+        } catch (error) {
+          if (error.kind !== 'setup') throw error;
+          tableReady = false;
+          return loadMeta();
+        }
       },
       async save(record) {
-        const { data, error } = await client.rpc('save_counter', {
-          p_days: record.count,
-          p_best: record.best,
-          p_changed_ms: Math.round(record.updated),
-        });
-        if (error) throw storeError(error);
-        return toRecord(Array.isArray(data) ? data[0] : data);
+        if (tableReady !== false) {
+          try {
+            const row = await saveRow(record);
+            tableReady = true;
+            return row;
+          } catch (error) {
+            if (error.kind !== 'setup') throw error;
+            tableReady = false;
+          }
+        }
+        return saveMeta(record);
       },
     };
   }
