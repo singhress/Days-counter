@@ -38,9 +38,11 @@ create policy "Users can update their own counter"
   using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id);
 
--- Only signed-in users reach the table, and only through the policies above
+-- Only signed-in users reach the table, and only through the policies above.
+-- Grants are explicit because Supabase is ending automatic grants on new tables.
 revoke all on table public.counters from anon, authenticated;
 grant select, insert, update on table public.counters to authenticated;
+grant select, insert, update, delete on table public.counters to service_role;
 
 create or replace function public.counters_touch_updated_at()
 returns trigger
@@ -52,6 +54,8 @@ begin
   return new;
 end;
 $$;
+
+revoke all on function public.counters_touch_updated_at() from public, anon, authenticated;
 
 drop trigger if exists counters_touch_updated_at on public.counters;
 create trigger counters_touch_updated_at

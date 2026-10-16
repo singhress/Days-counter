@@ -19,6 +19,7 @@
   const syncEl = $('account-sync');
   const signOutBtn = $('signout');
   const signOutAnywayBtn = $('signout-anyway');
+  const resendBtn = $('resend');
 
   const VIEWS = {
     signin: { el: $('view-signin'), title: 'Back up your days' },
@@ -50,7 +51,8 @@
   /* ---------- Account store for script.js ---------- */
 
   function toRecord(row) {
-    return row ? { count: row.days, best: row.best, updated: Number(row.changed_ms) } : null;
+    if (!row || row.days == null) return null;
+    return { count: row.days, best: row.best, updated: Number(row.changed_ms) };
   }
 
   // Sorts a failed request into what script.js needs to know
@@ -60,8 +62,10 @@
     let kind = 'offline';
     // Table or function missing: the migration hasn't been applied yet
     if (code === '42P01' || code === '42883' || code === 'PGRST202' || code === 'PGRST205' || status === 404) kind = 'setup';
+    // An expired sign-in token is refreshed automatically, so try again later
+    else if (code.startsWith('PGRST30') || status === 401) kind = 'offline';
     // Permission or data problems the account won't accept on a retry
-    else if (code === '42501' || code.startsWith('23') || code === 'PGRST301' || status === 401 || status === 403) kind = 'refused';
+    else if (code === '42501' || code.startsWith('23') || status === 403) kind = 'refused';
     return Object.assign(new Error((error && error.message) || 'Request failed'), { kind });
   }
 
@@ -105,6 +109,14 @@
   });
 
   function handleAuth(event, session) {
+    try {
+      onAuthEvent(event, session);
+    } catch (error) {
+      console.error('Days Counter: could not handle the sign-in change', error);
+    }
+  }
+
+  function onAuthEvent(event, session) {
     const person = session ? session.user : null;
 
     if (event === 'SIGNED_OUT') {
@@ -176,6 +188,8 @@
       openDialog('account');
       showMessage('Email confirmed. You are signed in and your days are backed up.');
     }
+    // Normally PASSWORD_RECOVERY opens this; the address is a fallback
+    if (landing.type === 'recovery' && user) openDialog('recovery');
     if (landing.type) cleanAddress();
   }
 
@@ -207,6 +221,7 @@
     });
     titleEl.textContent = VIEWS[name].title;
     signOutAnywayBtn.hidden = true;
+    resendBtn.hidden = true;
     clearMessage();
   }
 
@@ -244,8 +259,9 @@
     const text = (error && error.message) || '';
     if (code === 'invalid_credentials' || /invalid login credentials/i.test(text)) return 'That email and password don’t match. Check them and try again.';
     if (code === 'email_not_confirmed' || /email not confirmed/i.test(text)) return 'Confirm your email first. Open the link we sent you, then sign in.';
+    if (code === 'email_address_not_authorized') return 'This site can’t send email to that address yet. The site owner needs to set up email sending (custom SMTP) in Supabase.';
     if (code === 'user_already_exists' || code === 'email_exists' || /already registered/i.test(text)) return 'There’s already an account with this email. Sign in instead.';
-    if (code === 'weak_password' || /password should be/i.test(text)) return text || 'Choose a longer password.';
+    if (code === 'weak_password' || /password should/i.test(text)) return text || 'Choose a longer or stronger password.';
     if (code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit' || /rate limit/i.test(text)) return 'Too many attempts. Wait a few minutes and try again.';
     if (code === 'email_address_invalid' || /invalid.*email|email.*invalid/i.test(text)) return 'That email address doesn’t look right.';
     if (code === 'signup_disabled') return 'New sign-ups are turned off for this site.';
@@ -260,7 +276,15 @@
     const invalid = fields.find((input) => !input.checkValidity());
     if (invalid) {
       invalid.focus();
-      showMessage(invalid.type === 'email' ? 'Enter a valid email address.' : 'Enter a password with at least 6 characters.', true);
+      const min = invalid.minLength > 0 ? invalid.minLength : 0;
+      showMessage(
+        invalid.type === 'email'
+          ? 'Enter a valid email address.'
+          : min
+            ? `Use a password with at least ${min} characters.`
+            : 'Enter your password.',
+        true
+      );
       return;
     }
     clearMessage();
@@ -279,7 +303,10 @@
     const form = e.currentTarget;
     submit(form, async ({ email, password }) => {
       const { error } = await client.auth.signInWithPassword({ email: email.trim(), password });
-      if (error) throw error;
+      if (error) {
+        resendBtn.hidden = error.code !== 'email_not_confirmed';
+        throw error;
+      }
       form.reset();
       closeDialog();
     });
@@ -301,6 +328,14 @@
         return;
       }
       showView('signin');
+      $('signin-email').value = email.trim();
+      // With email confirmation on, Supabase answers a sign-up for an existing
+      // address with a placeholder user that has no identities
+      const created = data && data.user;
+      if (created && Array.isArray(created.identities) && created.identities.length === 0) {
+        showMessage('There’s already an account with this email. Sign in, or use “Forgot password?” to set a new one.', true);
+        return;
+      }
       showMessage(`Almost done. We sent a link to ${email.trim()}. Open it to confirm your email, then sign in.`);
     });
   });
@@ -355,6 +390,22 @@
       showMessage(explain(error), true);
     }
   }
+
+  resendBtn.addEventListener('click', async () => {
+    const email = $('signin-email').value.trim();
+    if (!email) {
+      showMessage('Enter your email first.', true);
+      return;
+    }
+    resendBtn.disabled = true;
+    const { error } = await client.auth.resend({ type: 'signup', email, options: { emailRedirectTo: pageUrl } });
+    resendBtn.disabled = false;
+    if (error) showMessage(explain(error), true);
+    else {
+      resendBtn.hidden = true;
+      showMessage(`We sent a new confirmation link to ${email}.`);
+    }
+  });
 
   signOutBtn.addEventListener('click', () => signOut(false));
   signOutAnywayBtn.addEventListener('click', () => signOut(true));

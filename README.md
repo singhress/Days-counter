@@ -60,7 +60,34 @@ The count never resets on its own. There is no timer, daily cutoff or expiry: on
 - On the first tap the site asks the browser for persistent storage, so the data isn't cleared when the device runs low on space.
 - If the browser blocks storage (some private modes do), the page says so under the level track instead of silently losing the count.
 
-Browser data is still cleared if you clear your browsing data. Safari can also clear it if you don't open the site for 7 days, unless you add it to your Home Screen. If that happens, use **Set count** to put your number back.
+Browser data is still cleared if you clear your browsing data. Safari can also clear it if you don't open the site for 7 days, unless you add it to your Home Screen. If that happens, use **Set count** to put your number back, or sign in (below).
+
+## Accounts
+
+With a Supabase project connected, people can create an account with their email and a password. Their count is then saved to the account as well as the browser, so it survives a cleared browser or a new phone, and it follows them across devices.
+
+- The status line under the level track shows where the count is saved: *Saved only in this browser*, *Saved to your account*, or *Saved on this device. It will back up to your account when you're online.*
+- Signing in on a device that already has days: if the account is empty, those days move into it. If the account has a different count, the page asks which one to keep.
+- When the same account is used on two devices, the most recent change wins, and each device picks up the other's changes when it's opened again.
+- Signing out saves everything to the account first, then removes the count from that device. If the account can't be reached, the page won't sign out unless you choose to keep the days on the device.
+- Without a Supabase project in `config.js`, the sign-in option is hidden and the counter works on its own.
+
+### Setting up Supabase
+
+1. **Add your project details.** In the Supabase dashboard, click **Connect** (or open **Project Settings → API Keys**). Copy the **Project URL** and the **publishable key** (`sb_publishable_…`; the legacy `anon` key also works) into `config.js`. Both are safe to publish. Never put a `service_role` or `sb_secret_` key in this repo.
+2. **Create the table.** The database setup is in `supabase/migrations/20261016120000_create_counters.sql`.
+   - With the GitHub integration (**Project Settings → Integrations → GitHub**), check that **Working directory** is `.`, the production branch is `master`, and **Deploy to production** is on. The migration then runs when it reaches `master`. You can follow it under **Branches → View logs**.
+   - Otherwise, open **SQL Editor**, paste the whole file and run it. It is safe to run more than once.
+   - Don't add a `supabase/config.toml` to this repo. Keep auth settings in the dashboard.
+3. **Allow the site's address.** In **Authentication → URL Configuration**, set **Site URL** to `https://singhress.github.io/Days-counter/` and add `https://singhress.github.io/Days-counter/**` to **Redirect URLs**. Add `http://localhost:8000/**` as well if you test locally. Email links (confirm sign-up, reset password) only return to these addresses.
+4. **Set up email.** Supabase's built-in email only delivers to members of your Supabase team, and only 2 emails an hour. For real users, add your own email provider under **Authentication → Emails → SMTP Settings** (Resend, Brevo, Postmark and others work). Until then you can turn off **Confirm email** under **Authentication → Sign In / Providers** so sign-ups work straight away, but password reset emails still need SMTP.
+5. **Match the password rule.** The site asks for at least 8 characters. Set **Minimum password length** to 8 under **Authentication → Sign In / Providers → Email**.
+
+### How the data is protected
+
+- Each person's count is one row in `public.counters`. Row level security lets a signed-in person read and write only their own row, and people who aren't signed in can't reach the table at all.
+- Saves go through `save_counter()`, which keeps whichever copy changed most recently. An older device can't overwrite a newer count, and a device whose clock is wrong can't block later saves.
+- Deleting a user in **Authentication → Users** also deletes their row.
 
 ## Run it
 
