@@ -58,7 +58,18 @@
           <span id="save-status" role="status">Saved in this browser</span>
           <span aria-hidden="true">·</span>
           <button type="button" class="link" id="edit">Set count</button>
+          <span class="account-entry" id="account-entry" hidden>
+            <span aria-hidden="true">·</span>
+            <button type="button" class="link" id="account-btn">Sign in</button>
+          </span>
         </p>
+        <div class="choice" id="choice" hidden>
+          <p id="choice-text"></p>
+          <div class="choice-actions">
+            <button type="button" class="chip chip-solid" id="keep-account">Keep my account's count</button>
+            <button type="button" class="chip" id="keep-device">Keep this device's count</button>
+          </div>
+        </div>
         <form class="edit" id="edit-form" hidden>
           <label for="edit-input">Days</label>
           <input id="edit-input" name="days" type="number" inputmode="numeric" min="0" max="99999" step="1" required>
@@ -75,6 +86,71 @@
       <p class="changes-note"><b>Research</b> marks findings from published studies. <b>Reported</b> marks what people commonly describe, which studies haven't confirmed.</p>
     </section>
   </div>
+
+  <dialog class="sheet" id="account-dialog" aria-labelledby="account-title">
+    <div class="sheet-head">
+      <h2 class="sheet-title" id="account-title">Back up your days</h2>
+      <button type="button" class="sheet-close" id="account-close" aria-label="Close">&times;</button>
+    </div>
+    <p class="sheet-msg" id="account-msg" role="alert" hidden></p>
+
+    <form class="sheet-view" id="view-signin" novalidate>
+      <p class="sheet-lead">Sign in to keep your count in your account. It stays safe if you clear your browser or change phones.</p>
+      <label class="field" for="signin-email">Email
+        <input id="signin-email" name="email" type="email" autocomplete="email" required>
+      </label>
+      <label class="field" for="signin-password">Password
+        <input id="signin-password" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit" class="chip chip-solid sheet-submit">Sign in</button>
+      <p class="sheet-links">
+        <button type="button" class="link" data-view="signup">Create an account</button>
+        <button type="button" class="link" data-view="forgot">Forgot password?</button>
+      </p>
+    </form>
+
+    <form class="sheet-view" id="view-signup" novalidate hidden>
+      <p class="sheet-lead">Your count is saved to this account, so you can sign in on any device and pick up where you left off.</p>
+      <label class="field" for="signup-email">Email
+        <input id="signup-email" name="email" type="email" autocomplete="email" required>
+      </label>
+      <label class="field" for="signup-password">Password
+        <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="6" required>
+        <span class="field-hint">At least 6 characters</span>
+      </label>
+      <button type="submit" class="chip chip-solid sheet-submit">Create account</button>
+      <p class="sheet-links">
+        <button type="button" class="link" data-view="signin">I already have an account</button>
+      </p>
+    </form>
+
+    <form class="sheet-view" id="view-forgot" novalidate hidden>
+      <p class="sheet-lead">Enter your email and we'll send you a link to set a new password.</p>
+      <label class="field" for="forgot-email">Email
+        <input id="forgot-email" name="email" type="email" autocomplete="email" required>
+      </label>
+      <button type="submit" class="chip chip-solid sheet-submit">Send reset link</button>
+      <p class="sheet-links">
+        <button type="button" class="link" data-view="signin">Back to sign in</button>
+      </p>
+    </form>
+
+    <form class="sheet-view" id="view-recovery" novalidate hidden>
+      <p class="sheet-lead">Choose a new password for your account.</p>
+      <label class="field" for="recovery-password">New password
+        <input id="recovery-password" name="password" type="password" autocomplete="new-password" minlength="6" required>
+        <span class="field-hint">At least 6 characters</span>
+      </label>
+      <button type="submit" class="chip chip-solid sheet-submit">Save new password</button>
+    </form>
+
+    <div class="sheet-view" id="view-account" hidden>
+      <p class="sheet-lead">Signed in as <b id="account-email"></b></p>
+      <p class="sheet-lead" id="account-sync"></p>
+      <button type="button" class="chip sheet-submit" id="signout">Sign out</button>
+      <button type="button" class="link sheet-anyway" id="signout-anyway" hidden>Sign out anyway and keep the days on this device</button>
+    </div>
+  </dialog>
 
   <script src="script.js"></script>
 </body>
