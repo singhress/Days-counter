@@ -20,6 +20,20 @@
     { at: 365, name: 'Legend',     h: 412, s: 100, l: 62, toast: 'Legend. One full year.' },
   ];
   const LAST = TIERS.length - 1;
+
+  // The aura around the dial moves the other way from the heat: murky and
+  // restless at first, then cooler, smoother and slower with every level,
+  // ending in a deep, still blue. One entry per level above.
+  const AURA = [
+    { name: 'Restless',  h: 16,  s: 45, l: 52 },
+    { name: 'Unsettled', h: 34,  s: 50, l: 55 },
+    { name: 'Settling',  h: 88,  s: 38, l: 56 },
+    { name: 'Steady',    h: 148, s: 48, l: 55 },
+    { name: 'Centered',  h: 174, s: 62, l: 55 },
+    { name: 'Calm',      h: 194, s: 78, l: 60 },
+    { name: 'Serene',    h: 212, s: 88, l: 66 },
+    { name: 'Still',     h: 226, s: 95, l: 76 },
+  ];
   // Past a year the colour keeps heating toward white until this day
   const WHITE_HOT_AT = 1000;
 
@@ -54,6 +68,7 @@
   const dial = $('dial');
   const countEl = $('count');
   const unitEl = $('unit');
+  const auraNameEl = $('aura-name');
   const tierEl = $('tier');
   const msgEl = $('msg');
   const nextEl = $('next');
@@ -510,6 +525,8 @@
     const f = i === LAST ? 0 : (days - a.at) / (b.at - a.at);
     const over = i === LAST ? Math.min((days - a.at) / (WHITE_HOT_AT - a.at), 1) : 0;
     const p = (i + f) / LAST;
+    const ca = AURA[i];
+    const cb = AURA[Math.min(i + 1, LAST)];
     return {
       i,
       p, // position on the heat track, 0..1
@@ -517,6 +534,10 @@
       h: lerp(a.h, b.h, f),
       s: lerp(a.s, b.s, f),
       l: lerp(a.l, b.l, f) + over * 18,
+      // the aura's colour, which calms as the heat rises
+      calmH: lerp(ca.h, cb.h, f),
+      calmS: lerp(ca.s, cb.s, f),
+      calmL: lerp(ca.l, cb.l, f) + over * 10,
     };
   }
 
@@ -605,7 +626,8 @@
     undoBtn.disabled = busy || count === 0;
     resetBtn.disabled = busy || count === 0;
     editBtn.disabled = busy;
-    dial.setAttribute('aria-label', `Add a day. ${count} ${plural(count)} so far.`);
+    auraNameEl.textContent = `${AURA[heat.i].name} aura`;
+    dial.setAttribute('aria-label', `Add a day. ${count} ${plural(count)} so far. ${AURA[heat.i].name} aura.`);
 
     nextEl.replaceChildren();
     if (next) {
@@ -623,6 +645,9 @@
     const bg = hsla({ h: heat.h, s: 10 + 26 * heat.p, l: 5 + 2.5 * heat.p });
     root.style.setProperty('--heat', hsla(heat));
     root.style.setProperty('--heat-hi', hsla(heat, 1, 16));
+    const calm = { h: heat.calmH, s: heat.calmS, l: heat.calmL };
+    root.style.setProperty('--calm', hsla(calm));
+    root.style.setProperty('--calm-hi', hsla(calm, 1, 14));
     root.style.setProperty('--bg', bg);
     root.style.setProperty('--aura', (0.08 + 0.42 * Math.min(heat.t, 1.2)).toFixed(3));
     root.style.setProperty('--glow', (4 + 36 * heat.p).toFixed(1));
@@ -813,6 +838,8 @@
   const shown = { ...target }; // what the canvas draws; eases toward target
   let phase = 0;
   let kick = 0; // extra wave height from recent taps, decays over time
+  let auraPhase = 0; // the aura's breathing
+  let auraWobble = 0; // the aura's flicker, fast while restless
   let running = false;
   let lastTime = 0;
   const ripples = [];
@@ -877,7 +904,11 @@
 
   function step(dt) {
     const ease = 1 - Math.exp(-dt * 5);
-    for (const key of ['h', 's', 'l', 't', 'p']) shown[key] += (target[key] - shown[key]) * ease;
+    for (const key of ['h', 's', 'l', 't', 'p', 'calmH', 'calmS', 'calmL']) shown[key] += (target[key] - shown[key]) * ease;
+    // One breath every 1.2 s while restless, slowing to one every 8 s when still
+    const calmNow = Math.min(shown.t, 1.3) / 1.3;
+    auraPhase += (dt * TAU) / (1.2 + 6.8 * calmNow);
+    auraWobble += dt * (6 - 5.4 * calmNow);
     kick *= Math.exp(-dt * 2.6);
     phase += dt * (0.7 + 1.8 * Math.min(shown.t, 1.35) + kick * 0.09);
 
@@ -905,6 +936,32 @@
 
     ctx.clearRect(0, 0, W, H);
     ctx.globalCompositeOperation = 'lighter';
+
+    // Aura: soft light around the dial. Restless at first (quick, flickering,
+    // ragged), then calmer, slower, smoother and brighter as the days add up
+    const calm = Math.min(t, 1.3) / 1.3;
+    const restless = 1 - calm;
+    const auraColor = { h: shown.calmH, s: shown.calmS, l: shown.calmL };
+    const breath = 0.5 + 0.5 * Math.sin(auraPhase);
+    const flicker = restless * (0.5 * Math.sin(auraWobble * 2.9) + 0.5 * Math.sin(auraWobble * 5.3 + 1.1));
+    const inner = R * 0.9;
+    const peak = R * (1.16 + 0.05 * breath + 0.03 * flicker);
+    const outer = R * (1.6 + 0.35 * calm + 0.1 * breath);
+    const strength = (0.16 + 0.42 * calm) * (0.8 + 0.2 * breath + 0.15 * flicker);
+    const glow = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    glow.addColorStop(0, hsla(auraColor, 0));
+    glow.addColorStop(Math.min(0.95, (peak - inner) / (outer - inner)), hsla(auraColor, Math.max(0, strength)));
+    glow.addColorStop(1, hsla(auraColor, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, outer, 0, TAU);
+    ctx.fill();
+
+    // The aura's edge: ragged while restless, a clean, slow circle once calm
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = hsla(auraColor, 0.25 + 0.35 * calm, 10);
+    ring(cx, cy, peak, 1 + restless * R * 0.05, 3, auraWobble);
+    ctx.stroke();
 
     for (const rp of ripples) {
       if (rp.age < 0) continue;

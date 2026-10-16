@@ -19,6 +19,23 @@ The colour moves one equal step between each level, so the first week changes fa
 
 After 365 the colour keeps whitening until day 1000. Higher levels also add more wave crests, stronger ripples and sparks on each tap.
 
+## Aura
+
+Around the circle sits a soft aura that moves the other way from the heat: as the circle gets hotter, the aura gets calmer. It starts restless (a murky orange that flickers fast, with a ragged edge) and with each level turns cooler and brighter, breathes more slowly and settles into a smooth circle. By a year it glows a deep, still blue. Its name shows inside the circle.
+
+| Days | Aura      |
+| ---- | --------- |
+| 0    | Restless  |
+| 1    | Unsettled |
+| 7    | Settling  |
+| 21   | Steady    |
+| 30   | Centered  |
+| 66   | Calm      |
+| 100  | Serene    |
+| 365  | Still     |
+
+The aura colours live in the `AURA` list at the top of `script.js`.
+
 ## What's changing in you
 
 Below the counter, a timeline shows what tends to change as the streak grows. Each step unlocks on its day, with a pop-up when you reach it, and the main screen links to the next one coming up.
