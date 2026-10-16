@@ -15,51 +15,64 @@
   <canvas id="waves" aria-hidden="true"></canvas>
 
   <div class="app">
-    <header class="bar">
-      <p class="brand">Days Counter</p>
-      <div class="tools" id="tools">
-        <p class="best">Best <span id="best">0</span></p>
-        <button type="button" class="chip" id="undo" aria-label="Remove one day">&minus;1</button>
-        <button type="button" class="chip" id="reset">Reset</button>
-      </div>
-      <div class="tools" id="confirm" hidden>
-        <p class="best">Reset to 0?</p>
-        <button type="button" class="chip chip-danger" id="confirm-yes">Reset</button>
-        <button type="button" class="chip" id="confirm-no">Cancel</button>
-      </div>
-    </header>
-
-    <main class="stage">
-      <div class="aura" aria-hidden="true"></div>
-      <button type="button" class="dial" id="dial" aria-label="Add a day">
-        <span class="count" id="count" data-len="1">0</span>
-        <span class="unit" id="unit">days</span>
-      </button>
-      <p class="toast" id="toast" aria-hidden="true"></p>
-    </main>
-
-    <section class="info">
-      <p class="tier" id="tier">Cold start</p>
-      <p class="msg" id="msg" aria-live="polite">Tap the circle to add your first day.</p>
-      <div class="track" aria-hidden="true">
-        <div class="track-bar" id="track-bar">
-          <div class="track-lock"></div>
-          <div class="track-dot"></div>
+    <div class="screen">
+      <header class="bar">
+        <p class="brand">Days Counter</p>
+        <div class="tools" id="tools">
+          <p class="best">Best <span id="best">0</span></p>
+          <button type="button" class="chip" id="undo" aria-label="Remove one day">&minus;1</button>
+          <button type="button" class="chip" id="reset">Reset</button>
         </div>
-        <ol class="ticks" id="ticks"></ol>
-      </div>
-      <p class="next" id="next"></p>
-      <p class="foot" id="foot">
-        <span id="save-status" role="status">Saved in this browser</span>
-        <span aria-hidden="true">·</span>
-        <button type="button" class="link" id="edit">Set count</button>
-      </p>
-      <form class="edit" id="edit-form" hidden>
-        <label for="edit-input">Days</label>
-        <input id="edit-input" name="days" type="number" inputmode="numeric" min="0" max="99999" step="1" required>
-        <button type="submit" class="chip chip-solid">Save</button>
-        <button type="button" class="chip" id="edit-cancel">Cancel</button>
-      </form>
+        <div class="tools" id="confirm" hidden>
+          <p class="best">Reset to 0?</p>
+          <button type="button" class="chip chip-danger" id="confirm-yes">Reset</button>
+          <button type="button" class="chip" id="confirm-no">Cancel</button>
+        </div>
+      </header>
+
+      <main class="stage">
+        <div class="aura" aria-hidden="true"></div>
+        <button type="button" class="dial" id="dial" aria-label="Add a day">
+          <span class="count" id="count" data-len="1">0</span>
+          <span class="unit" id="unit">days</span>
+        </button>
+        <p class="toast" id="toast" aria-hidden="true"></p>
+      </main>
+
+      <section class="info">
+        <p class="tier" id="tier">Cold start</p>
+        <p class="msg" id="msg" aria-live="polite">Tap the circle to add your first day.</p>
+        <div class="track" aria-hidden="true">
+          <div class="track-bar" id="track-bar">
+            <div class="track-lock"></div>
+            <div class="track-dot"></div>
+          </div>
+          <ol class="ticks" id="ticks"></ol>
+        </div>
+        <p class="next" id="next"></p>
+        <button type="button" class="teaser" id="teaser">
+          <span id="teaser-text">Next change in you</span>
+          <span aria-hidden="true">↓</span>
+        </button>
+        <p class="foot" id="foot">
+          <span id="save-status" role="status">Saved in this browser</span>
+          <span aria-hidden="true">·</span>
+          <button type="button" class="link" id="edit">Set count</button>
+        </p>
+        <form class="edit" id="edit-form" hidden>
+          <label for="edit-input">Days</label>
+          <input id="edit-input" name="days" type="number" inputmode="numeric" min="0" max="99999" step="1" required>
+          <button type="submit" class="chip chip-solid">Save</button>
+          <button type="button" class="chip" id="edit-cancel">Cancel</button>
+        </form>
+      </section>
+    </div>
+
+    <section class="changes" id="changes" aria-labelledby="changes-title">
+      <h2 id="changes-title">What's changing in you</h2>
+      <p class="changes-intro">What tends to happen as your streak grows. Each change unlocks on its day.</p>
+      <ol class="steps" id="steps"></ol>
+      <p class="changes-note"><b>Research</b> marks findings from published studies. <b>Reported</b> marks what people commonly describe, which studies haven't confirmed.</p>
     </section>
   </div>
 

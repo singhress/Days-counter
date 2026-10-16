@@ -35,6 +35,20 @@
     ['A full year. Legendary.', 'White hot.', 'Nothing can cool this down.', 'Every day now adds more heat.'],
   ];
 
+  // What tends to change as the streak grows. `kind` says how solid each point is:
+  // Research = published studies, Reported = what people commonly describe.
+  const CHANGES = [
+    { at: 1, kind: 'Tip', title: 'Day one is done', text: 'Urges rise, peak and fade, often within minutes. When one hits, change rooms, move your body or step outside until it passes.' },
+    { at: 3, kind: 'Reported', title: 'Urges at their strongest', text: 'The first days are usually the hardest. Your brain still expects the old reward at the usual times, so cravings spike around your old triggers.' },
+    { at: 7, kind: 'Research', title: 'Testosterone peak', text: 'In a small 2003 study of 28 men, testosterone peaked on day 7 of abstinence at about 1.5 times the starting level, then returned to normal. The rise is short-lived.' },
+    { at: 14, kind: 'Reported', title: 'More time and focus', text: 'Many people notice more free time and fewer distractions, especially late at night. Put that time into something you want more of.' },
+    { at: 21, kind: 'Research', title: 'Triggers lose their pull', text: 'When a trigger keeps showing up without the old reward, its pull weakens. Psychologists call this extinction, and it is why urges get quieter with time.' },
+    { at: 30, kind: 'Reported', title: 'A month of self-control', text: 'People often report feeling more confident and more in control after a month. Every urge you rode out was practice.' },
+    { at: 66, kind: 'Research', title: 'Running on autopilot', text: 'In a 2009 study by Lally and colleagues, new habits took 66 days on average to become automatic. Staying on track now takes much less effort.' },
+    { at: 90, kind: 'Reported', title: 'The 90-day reset', text: '90 days is a common goal in quit communities. People describe steadier mood, better sleep and more energy, though studies have not confirmed these effects.' },
+    { at: 365, kind: 'Milestone', title: 'A year of keeping your word', text: 'A full year of keeping a promise to yourself. That record is proof you can change a habit when you decide to.' },
+  ];
+
   const $ = (id) => document.getElementById(id);
   const root = document.documentElement;
   const dial = $('dial');
@@ -57,6 +71,10 @@
   const editForm = $('edit-form');
   const editInput = $('edit-input');
   const editCancel = $('edit-cancel');
+  const teaserBtn = $('teaser');
+  const teaserText = $('teaser-text');
+  const changesEl = $('changes');
+  const stepEls = [];
   const themeMeta = document.querySelector('meta[name="theme-color"]');
   const canvas = $('waves');
   const ctx = canvas.getContext('2d');
@@ -275,6 +293,63 @@
     });
   }
 
+  function buildChanges() {
+    const list = $('steps');
+    CHANGES.forEach((change) => {
+      const li = document.createElement('li');
+      li.className = 'step';
+      li.style.setProperty('--c', hsla(heatOf(change.at)));
+
+      const dot = document.createElement('span');
+      dot.className = 'step-dot';
+      dot.setAttribute('aria-hidden', 'true');
+
+      const body = document.createElement('div');
+      body.className = 'step-body';
+      const head = document.createElement('div');
+      head.className = 'step-head';
+      const day = document.createElement('span');
+      day.className = 'step-day';
+      day.textContent = `Day ${change.at}`;
+      const tag = document.createElement('span');
+      tag.className = `tag tag-${change.kind.toLowerCase()}`;
+      tag.textContent = change.kind;
+      const when = document.createElement('span');
+      when.className = 'step-when';
+      head.append(day, tag, when);
+
+      const title = document.createElement('h3');
+      title.className = 'step-title';
+      title.textContent = change.title;
+      const text = document.createElement('p');
+      text.className = 'step-text';
+      text.textContent = change.text;
+
+      body.append(head, title, text);
+      li.append(dot, body);
+      list.appendChild(li);
+      stepEls.push(li);
+    });
+  }
+
+  function renderChanges(count) {
+    let current = -1;
+    CHANGES.forEach((change, k) => {
+      if (count >= change.at) current = k;
+    });
+    stepEls.forEach((li, k) => {
+      const left = CHANGES[k].at - count;
+      li.classList.toggle('done', k <= current);
+      li.classList.toggle('current', k === current);
+      li.classList.toggle('linked', k < current);
+      li.querySelector('.step-when').textContent = left <= 0 ? 'Unlocked' : `in ${left} ${plural(left)}`;
+    });
+    const next = CHANGES[current + 1];
+    teaserText.textContent = next
+      ? `Next change in you: ${next.title}, day ${next.at}`
+      : 'Every change unlocked. See them all';
+  }
+
   function render() {
     const { count, best } = state;
     const heat = heatOf(count);
@@ -301,6 +376,7 @@
     }
 
     $('ticks').querySelectorAll('li').forEach((li, k) => li.classList.toggle('on', count >= TIERS[k].at));
+    renderChanges(count);
 
     const bg = hsla({ h: heat.h, s: 10 + 26 * heat.p, l: 5 + 2.5 * heat.p });
     root.style.setProperty('--heat', hsla(heat));
@@ -327,8 +403,15 @@
   }
 
   let toastTimer = 0;
-  function showToast(text) {
-    toastEl.textContent = text;
+  function showToast(lines) {
+    toastEl.replaceChildren(
+      ...lines.map((line, k) => {
+        const span = document.createElement('span');
+        if (k) span.className = 'toast-sub';
+        span.textContent = line;
+        return span;
+      })
+    );
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
@@ -362,10 +445,17 @@
     askPersist();
 
     const heat = heatOf(state.count);
-    const milestone = TIERS[heat.i].at === state.count;
+    const levelUp = TIERS[heat.i].at === state.count;
+    const change = CHANGES.find((c) => c.at === state.count);
+    const milestone = levelUp || Boolean(change);
     render();
-    msgEl.textContent = pickLine(heat.i, milestone);
-    if (milestone) showToast(TIERS[heat.i].toast);
+    msgEl.textContent = levelUp || !change
+      ? pickLine(heat.i, levelUp)
+      : `Day ${change.at} unlocked: ${change.title}.`;
+    const toast = [];
+    if (levelUp) toast.push(TIERS[heat.i].toast);
+    if (change) toast.push(`Unlocked: ${change.title}`);
+    if (toast.length) showToast(toast);
     pulse(heat, milestone);
     popNumber(milestone);
     buzz(milestone);
@@ -444,6 +534,10 @@
   editBtn.addEventListener('click', openEdit);
   editCancel.addEventListener('click', closeEdit);
   editForm.addEventListener('submit', saveEdit);
+  teaserBtn.addEventListener('click', () => {
+    const current = changesEl.querySelector('.step.current') || changesEl;
+    current.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (!confirmBox.hidden) closeConfirm();
@@ -636,6 +730,7 @@
   /* ---------- Start ---------- */
 
   buildTrack();
+  buildChanges();
   render();
   msgEl.textContent = state.count ? pickLine(heatOf(state.count).i, false) : LINES[0][0];
   resize();

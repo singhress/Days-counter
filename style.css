@@ -74,6 +74,14 @@ body {
   padding-block: 12px 28px;
 }
 
+/* The counter fills the first screen; the timeline sits below it */
+.screen {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 40px);
+  min-height: calc(100svh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 40px);
+}
+
 /* Header */
 
 .bar {
@@ -162,7 +170,7 @@ body {
   flex: 1;
   display: grid;
   place-items: center;
-  min-height: calc(var(--dial) + 88px);
+  min-height: calc(var(--dial) + 72px);
 }
 
 .aura {
@@ -257,6 +265,17 @@ body {
   transition: opacity 0.3s ease, transform 0.3s ease, visibility 0s linear 0.3s;
 }
 
+.toast span {
+  display: block;
+}
+
+.toast .toast-sub {
+  margin-top: 3px;
+  font: 500 12px/1.3 var(--font-body);
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
 .toast.show {
   opacity: 1;
   visibility: visible;
@@ -268,7 +287,8 @@ body {
 
 /* Keeps text readable when ripples pass underneath */
 .bar,
-.info {
+.info,
+.changes {
   text-shadow: 0 0 4px var(--bg), 0 0 14px var(--bg);
 }
 
@@ -366,6 +386,25 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.teaser {
+  appearance: none;
+  display: inline-flex;
+  gap: 6px;
+  margin-top: -6px;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: 500 13px/1.4 var(--font-body);
+  cursor: pointer;
+}
+
+.teaser span:first-child {
+  text-decoration: underline;
+  text-decoration-color: var(--heat);
+  text-underline-offset: 4px;
+}
+
 /* Save status and manual count */
 
 .foot {
@@ -436,6 +475,166 @@ body {
 .edit input::-webkit-outer-spin-button {
   margin: 0;
   -webkit-appearance: none;
+}
+
+/* What's changing in you */
+
+.changes {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding-top: 56px;
+}
+
+.changes h2 {
+  margin: 0;
+  font: 700 clamp(18px, 5vw, 22px) / 1.2 var(--font-display);
+  text-wrap: balance;
+}
+
+.changes-intro {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.changes-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.changes-note b {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.steps {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: 14px;
+  padding: 12px 14px 12px 10px;
+  border-radius: 16px;
+  transition: background-color 0.4s ease;
+}
+
+/* Line from this step's dot down to the next one */
+.step::after {
+  content: "";
+  position: absolute;
+  top: 30px;
+  bottom: -20px;
+  left: 17px;
+  width: 2px;
+  background: var(--line);
+}
+
+.step:last-child::after {
+  display: none;
+}
+
+.step.linked::after {
+  background: var(--c);
+}
+
+.step-dot {
+  position: relative;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--bg);
+  transition: background-color 0.4s ease, border-color 0.4s ease;
+}
+
+.step.done .step-dot {
+  border-color: var(--c);
+  background: var(--c);
+  box-shadow: 0 0 10px var(--c);
+}
+
+.step.current {
+  background: color-mix(in srgb, var(--c) 12%, transparent);
+}
+
+.step-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.step-day {
+  font: 600 12px/1 var(--font-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.step.done .step-day {
+  color: var(--c);
+}
+
+.tag {
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: 600 10px/1 var(--font-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tag-research {
+  border-color: var(--muted);
+  color: var(--fg);
+}
+
+.step-when {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--faint);
+}
+
+.step.done .step-when {
+  color: var(--muted);
+}
+
+.step-title {
+  margin: 0;
+  font: 600 16px/1.3 var(--font-body);
+  color: var(--muted);
+}
+
+.step.done .step-title {
+  color: var(--fg);
+}
+
+.step-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

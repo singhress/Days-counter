@@ -19,6 +19,30 @@ The colour moves one equal step between each level, so the first week changes fa
 
 After 365 the colour keeps whitening until day 1000. Higher levels also add more wave crests, stronger ripples and sparks on each tap.
 
+## What's changing in you
+
+Below the counter, a timeline shows what tends to change as the streak grows. Each step unlocks on its day, with a pop-up when you reach it, and the main screen links to the next one coming up.
+
+| Day | Change                      | Basis     |
+| --- | --------------------------- | --------- |
+| 1   | Day one is done             | Tip       |
+| 3   | Urges at their strongest    | Reported  |
+| 7   | Testosterone peak           | Research  |
+| 14  | More time and focus         | Reported  |
+| 21  | Triggers lose their pull    | Research  |
+| 30  | A month of self-control     | Reported  |
+| 66  | Running on autopilot        | Research  |
+| 90  | The 90-day reset            | Reported  |
+| 365 | A year of keeping your word | Milestone |
+
+Each step is labelled honestly. **Research** means a published study or established psychology backs it; **Reported** means people commonly describe it but studies haven't confirmed it.
+
+- Day 7: Jiang et al. (2003), *Journal of Zhejiang University Science*. In 28 men, testosterone peaked on day 7 of abstinence (about 146% of baseline) and then returned to normal.
+- Day 21: extinction, the learning principle that a cue repeated without its reward loses its pull.
+- Day 66: Lally et al. (2009), *European Journal of Social Psychology*. New habits took 66 days on average (range 18 to 254) to become automatic.
+
+The content lives in the `CHANGES` list at the top of `script.js`, so it's easy to edit.
+
 ## Features
 
 - Tap or press Space/Enter on the circle to add a day.
