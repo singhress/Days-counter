@@ -71,6 +71,10 @@
   const editForm = $('edit-form');
   const editInput = $('edit-input');
   const editCancel = $('edit-cancel');
+  const choiceEl = $('choice');
+  const choiceText = $('choice-text');
+  const keepAccountBtn = $('keep-account');
+  const keepDeviceBtn = $('keep-device');
   const teaserBtn = $('teaser');
   const teaserText = $('teaser-text');
   const changesEl = $('changes');
@@ -87,18 +91,18 @@
 
   /* ---------- Saving ----------
    * The count never resets on its own: only the Reset button sets it to 0.
-   * It is saved in localStorage on every change. Each save carries an
-   * `updated` time, so copies of the count (other open tabs, or the optional
-   * second store below) always settle on the most recent one.
+   *
+   * This device keeps a copy in localStorage, written on every change. When
+   * someone signs in, the count is also kept in their account. The account
+   * store is plugged in at run time through window.daysCounter.useAccounts()
+   * (see account.js), so the counter works the same with or without it.
+   *
+   * Every change carries an `updated` time, and copies of the count (other
+   * tabs, the account) always settle on the most recent one, so an old copy
+   * never overwrites a newer count. `owner` is the account this device's copy
+   * belongs to (null before anyone signs in), `synced` is the `updated` time
+   * the account last confirmed, and `saved` orders writes between tabs.
    */
-
-  // A host page can add a second store by defining this before script.js loads:
-  //   window.daysCounterRemote = {
-  //     load()          -> Promise<{ available: boolean, record?: object|null }>
-  //     save(record)    -> Promise<boolean>   (false = the store refused for good)
-  //     watch(callback) -> optional, calls back with records saved elsewhere
-  //   }
-  const remote = window.daysCounterRemote || null;
 
   function sanitize(raw) {
     if (!raw || typeof raw !== 'object') return null;
@@ -106,8 +110,13 @@
     if (!Number.isFinite(count) || count < 0) return null;
     const best = Math.max(count, Math.floor(Number(raw.best)) || 0);
     const updated = Number(raw.updated) || 0;
-    return { count, best, updated };
+    const owner = typeof raw.owner === 'string' && raw.owner ? raw.owner : null;
+    const synced = Number(raw.synced) || 0;
+    const saved = Number(raw.saved) || updated;
+    return { count, best, updated, owner, synced, saved };
   }
+
+  const hasDays = (rec) => rec.count > 0 || rec.best > 0;
 
   function readLocal() {
     try {
@@ -118,6 +127,7 @@
   }
 
   function writeLocal() {
+    state.saved = Math.max(Date.now(), state.saved + 1);
     try {
       const text = JSON.stringify(state);
       localStorage.setItem(STORE_KEY, text);
@@ -137,22 +147,14 @@
     }
   }
 
-  const state = readLocal() || { count: 0, best: 0, updated: 0 };
+  const state = readLocal() || { count: 0, best: 0, updated: 0, owner: null, synced: 0, saved: 0 };
   let localOk = storageWorks();
-  let remoteOn = false; // the second store answered and accepts saves
-  let syncing = false; // waiting for the second store's first answer
 
-  function adopt(rec) {
-    state.count = rec.count;
-    state.best = rec.best;
-    state.updated = rec.updated;
-  }
-
-  // Take a newer count saved by another tab, so a stale tab never overwrites it
+  // Take a newer copy written by another tab, so a stale tab never overwrites it
   function pullLocal() {
     const rec = readLocal();
-    if (rec && rec.updated > state.updated) {
-      adopt(rec);
+    if (rec && rec.saved > state.saved) {
+      Object.assign(state, rec);
       return true;
     }
     return false;
@@ -161,83 +163,323 @@
   function commit() {
     state.updated = Math.max(Date.now(), state.updated + 1);
     localOk = writeLocal();
-    pushRemote();
+    pushToAccount();
     renderStatus();
   }
 
-  let pushing = false;
+  /* Account sync. A provider (account.js) calls onAccount(account, reason)
+   * whenever the signed-in account changes:
+   *   account: null, or { id, load() -> Promise<record|null>, save(record) -> Promise<record> }
+   *            where record is { count, best, updated } and save() resolves with
+   *            the account's copy after the save. Both reject with an error whose
+   *            `kind` is 'offline' (try again later), 'setup' (the database isn't
+   *            ready) or 'refused' (the account won't accept it).
+   *   reason:  'initial' | 'signed-in' | 'signed-out' (on purpose, after flush())
+   *            | 'expired' (the session ended by itself)
+   */
+
+  const ACCOUNT_TIMEOUT = 15000;
+  let account = null; // the signed-in account's store
+  let accountStatus = 'none'; // none | signed-out | expired | loading | ready | offline | setup | refused | choice
+  let merged = false; // this device's copy has been reconciled with the account
+  let busy = false; // taps wait while a count that may replace this one loads, or a choice is open
+  let pendingChoice = null; // { device, account } when both hold different days
+  let pushLoop = null;
   let pushAgain = false;
-  async function pushRemote() {
-    if (!remoteOn) return;
-    if (pushing) {
-      pushAgain = true; // a burst of taps becomes one more save after this one
+  let retryTimer = 0;
+  let lastRefresh = 0;
+
+  function withTimeout(promise) {
+    let timer;
+    const late = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error('Timed out'), { kind: 'offline' })), ACCOUNT_TIMEOUT);
+    });
+    return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+  }
+
+  function useAccounts(provider) {
+    if (accountStatus === 'none') accountStatus = state.owner ? 'loading' : 'signed-out';
+    renderStatus();
+    provider.start(onAccount);
+  }
+
+  function onAccount(next, reason) {
+    if (next && account && next.id === account.id) return;
+    account = next || null;
+    merged = false;
+    pendingChoice = null;
+    hideChoice();
+    clearTimeout(retryTimer);
+
+    if (account) {
+      connect(account);
       return;
     }
-    pushing = true;
-    try {
-      if ((await remote.save({ ...state })) === false) {
-        remoteOn = false;
-        renderStatus();
-      }
-    } catch {
-      // The local copy still holds the count; the next change tries again
+    if (reason === 'signed-out') {
+      // Signed out on purpose, after flush() confirmed the account has every day:
+      // take this person's count off the device
+      Object.assign(state, { count: 0, best: 0, updated: Math.max(Date.now(), state.updated + 1), owner: null, synced: 0 });
+      localOk = writeLocal();
+      accountStatus = 'signed-out';
+      setBusy(false);
+      msgEl.textContent = 'Signed out. Your days are safe in your account.';
+      return;
     }
-    pushing = false;
-    if (pushAgain) {
-      pushAgain = false;
-      pushRemote();
-    }
+    accountStatus = state.owner ? 'expired' : 'signed-out';
+    setBusy(false);
   }
 
-  function onRemoteRecord(raw) {
-    const rec = sanitize(raw);
-    if (rec && rec.updated > state.updated) {
-      adopt(rec);
+  async function connect(acc) {
+    accountStatus = 'loading';
+    // Taps that belong to this account are safe to keep; anything else waits for its count
+    setBusy(state.owner !== acc.id);
+    let remote;
+    try {
+      remote = await withTimeout(acc.load());
+    } catch (err) {
+      if (acc !== account) return;
+      failed(err);
+      setBusy(false);
+      return;
+    }
+    if (acc !== account) return;
+    reconcile(acc, remote ? sanitize(remote) : null);
+  }
+
+  function reconcile(acc, remote) {
+    pullLocal();
+    const local = { ...state };
+    if (local.owner === acc.id) {
+      if (remote && remote.updated > local.updated) takeAccount(remote);
+    } else if (local.owner || !hasDays(local)) {
+      // Another account's copy, or nothing counted yet: show this account's days
+      takeAccount(remote || { count: 0, best: 0, updated: 0 });
+    } else if (!remote || !hasDays(remote)) {
+      // Days counted before signing in move into the account
+      state.owner = acc.id;
+      state.synced = 0;
+      state.updated = Math.max(state.updated, (remote ? remote.updated : 0) + 1);
       localOk = writeLocal();
+    } else if (remote.count === local.count && remote.best === local.best) {
+      takeAccount(remote);
+    } else {
+      pendingChoice = { device: local, account: remote };
+      accountStatus = 'choice';
+      showChoice();
+      setBusy(true);
+      return;
+    }
+    finishMerge();
+  }
+
+  function takeAccount(remote) {
+    const before = state.count;
+    Object.assign(state, {
+      count: remote.count,
+      best: Math.max(remote.best, remote.count),
+      updated: remote.updated,
+      owner: account.id,
+      synced: remote.updated,
+    });
+    localOk = writeLocal();
+    if (state.count !== before) msgEl.textContent = `Loaded ${state.count} ${plural(state.count)} from your account.`;
+  }
+
+  function finishMerge() {
+    merged = true;
+    accountStatus = 'ready';
+    lastRefresh = Date.now();
+    setBusy(false);
+    if (state.updated !== state.synced) pushToAccount();
+  }
+
+  function choose(keep) {
+    const choice = pendingChoice;
+    if (!choice || !account) return;
+    pendingChoice = null;
+    hideChoice();
+    const picked = keep === 'device' ? choice.device : choice.account;
+    Object.assign(state, {
+      count: picked.count,
+      best: Math.max(choice.device.best, choice.account.best),
+      owner: account.id,
+      synced: 0,
+      // Newer than the account's copy, so the choice is what gets saved
+      updated: Math.max(Date.now(), choice.account.updated + 1, state.updated + 1),
+    });
+    localOk = writeLocal();
+    msgEl.textContent = `Keeping ${state.count} ${plural(state.count)}.`;
+    finishMerge();
+  }
+
+  const canPush = () => Boolean(account && merged && state.owner === account.id && !pendingChoice);
+
+  // Saves run one at a time; a burst of taps becomes one more save after the current one
+  function pushToAccount() {
+    if (!canPush()) return Promise.resolve();
+    pushAgain = true;
+    if (!pushLoop) {
+      pushLoop = (async () => {
+        while (pushAgain && canPush()) {
+          pushAgain = false;
+          if (!(await pushOnce(account))) break;
+        }
+        pushLoop = null;
+        renderStatus();
+      })();
+    }
+    return pushLoop;
+  }
+
+  async function pushOnce(acc) {
+    const sent = { count: state.count, best: state.best, updated: state.updated };
+    if (state.synced === sent.updated) return true;
+    renderStatus();
+    let remote;
+    try {
+      remote = sanitize(await withTimeout(acc.save(sent)));
+    } catch (err) {
+      if (acc === account) failed(err);
+      return false;
+    }
+    if (acc !== account) return false;
+    if (!remote) {
+      failed(null);
+      return false;
+    }
+    pullLocal();
+    if (state.updated === sent.updated) {
+      if (remote.updated > sent.updated || remote.count !== sent.count) {
+        // The account had a newer count from another device; that one wins
+        takeAccount(remote);
+        render();
+      } else {
+        state.best = Math.max(state.best, remote.best);
+        state.updated = remote.updated;
+        state.synced = remote.updated;
+        localOk = writeLocal();
+      }
+    } else if (state.updated <= remote.updated) {
+      // More taps landed while saving; keep them ahead of the account's copy
+      state.updated = remote.updated + 1;
+      localOk = writeLocal();
+    }
+    accountStatus = 'ready';
+    return true;
+  }
+
+  function failed(err) {
+    const kind = err && err.kind;
+    accountStatus = kind === 'setup' || kind === 'refused' ? kind : 'offline';
+    if (accountStatus === 'offline') {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(retry, 30000);
+    }
+    renderStatus();
+  }
+
+  function retry() {
+    if (!account || pendingChoice) return;
+    if (!merged) connect(account);
+    else refreshFromAccount();
+  }
+
+  // Pick up changes made on other devices when this page comes back into view
+  async function refreshFromAccount() {
+    const acc = account;
+    if (!acc || !merged || pendingChoice) return;
+    lastRefresh = Date.now();
+    let remote;
+    try {
+      remote = await withTimeout(acc.load());
+    } catch (err) {
+      if (acc === account) failed(err);
+      return;
+    }
+    if (acc !== account) return;
+    remote = remote ? sanitize(remote) : null;
+    pullLocal();
+    if (remote && remote.updated > state.updated) {
+      takeAccount(remote);
       render();
     }
+    accountStatus = 'ready';
+    if (state.updated !== state.synced) pushToAccount();
+    else renderStatus();
   }
 
-  async function connectRemote() {
-    setSyncing(true);
-    let answer = null;
-    try {
-      const giveUp = new Promise((resolve) => setTimeout(resolve, 8000, null));
-      answer = await Promise.race([remote.load(), giveUp]);
-    } catch {
-      answer = null;
-    }
-    if (answer && answer.available) {
-      remoteOn = true;
-      pullLocal();
-      const rec = sanitize(answer.record);
-      if (rec && rec.updated > state.updated) {
-        adopt(rec);
-        localOk = writeLocal();
-        render();
-        msgEl.textContent = state.count ? pickLine(heatOf(state.count).i, false) : LINES[0][0];
-      } else if (rec ? state.updated > rec.updated : state.count > 0 || state.best > 0) {
-        pushRemote();
-      }
-      if (remote.watch) remote.watch(onRemoteRecord);
-    }
-    setSyncing(false);
+  // Resolves true once the account holds every day on this device
+  async function flush() {
+    if (!account) return true;
+    if (pendingChoice) return false;
+    if (!merged) return state.owner === account.id ? state.updated === state.synced : !hasDays(state);
+    if (state.updated !== state.synced) await pushToAccount();
+    if (pushLoop) await pushLoop;
+    return state.updated === state.synced;
   }
 
-  function setSyncing(on) {
-    syncing = on;
+  function setBusy(on) {
+    busy = on;
     dial.disabled = on;
     dial.setAttribute('aria-busy', String(on));
     render();
   }
 
+  const BLOCKED = 'Not saved. This browser is blocking storage, so the count will be lost when you close the page.';
+
   function renderStatus() {
-    let text = 'Saved in this browser';
-    if (syncing) text = 'Loading your saved days…';
-    else if (remoteOn) text = 'Saved to your account';
-    else if (!localOk) text = 'Not saved. This browser is blocking storage, so the count will be lost when you close the page.';
+    let text;
+    let warn = false;
+    switch (accountStatus) {
+      case 'loading':
+        text = 'Loading your saved days…';
+        break;
+      case 'ready':
+        text = state.updated === state.synced ? 'Saved to your account' : 'Saving to your account…';
+        break;
+      case 'offline':
+        text = "Saved on this device. It will back up to your account when you're online.";
+        break;
+      case 'expired':
+        text = 'Signed out. Sign in again to back up your days.';
+        warn = true;
+        break;
+      case 'setup':
+        text = "Signed in, but account saving isn't set up yet. Your days are saved in this browser.";
+        warn = true;
+        break;
+      case 'refused':
+        text = "Your account didn't accept the save. Your days are saved in this browser.";
+        warn = true;
+        break;
+      case 'choice':
+        text = 'Choose which count to keep';
+        break;
+      default:
+        text = accountStatus === 'signed-out' ? 'Saved only in this browser' : 'Saved in this browser';
+        if (!localOk) {
+          text = BLOCKED;
+          warn = true;
+        }
+    }
     if (statusEl.textContent !== text) statusEl.textContent = text;
-    statusEl.classList.toggle('warn', !syncing && !remoteOn && !localOk);
+    statusEl.classList.toggle('warn', warn);
+  }
+
+  function showChoice() {
+    const { device, account: remote } = pendingChoice;
+    choiceText.textContent = `Your account has ${remote.count} ${plural(remote.count)}. This device has ${device.count} ${plural(device.count)}. Which count do you want to keep?`;
+    keepAccountBtn.textContent = `Keep ${remote.count} from my account`;
+    keepDeviceBtn.textContent = `Keep ${device.count} from this device`;
+    editForm.hidden = true;
+    footEl.hidden = true;
+    choiceEl.hidden = false;
+  }
+
+  function hideChoice() {
+    if (choiceEl.hidden) return;
+    choiceEl.hidden = true;
+    footEl.hidden = false;
   }
 
   // Ask the browser not to clear this site's data when the device runs low on space
@@ -360,9 +602,9 @@
     unitEl.textContent = plural(count);
     tierEl.textContent = TIERS[heat.i].name;
     bestEl.textContent = best;
-    undoBtn.disabled = syncing || count === 0;
-    resetBtn.disabled = syncing || count === 0;
-    editBtn.disabled = syncing;
+    undoBtn.disabled = busy || count === 0;
+    resetBtn.disabled = busy || count === 0;
+    editBtn.disabled = busy;
     dial.setAttribute('aria-label', `Add a day. ${count} ${plural(count)} so far.`);
 
     nextEl.replaceChildren();
@@ -437,7 +679,7 @@
   /* ---------- Actions ---------- */
 
   function addDay() {
-    if (syncing) return;
+    if (busy) return;
     pullLocal();
     state.count += 1;
     if (state.count > state.best) state.best = state.count;
@@ -462,7 +704,7 @@
   }
 
   function removeDay() {
-    if (syncing) return;
+    if (busy) return;
     pullLocal();
     if (!state.count) return render();
     state.count -= 1;
@@ -485,7 +727,7 @@
   }
 
   function resetCount() {
-    if (syncing) return;
+    if (busy) return;
     pullLocal();
     state.count = 0;
     commit();
@@ -515,7 +757,7 @@
   function saveEdit(e) {
     e.preventDefault();
     const n = Math.floor(Number(editInput.value));
-    if (syncing || !Number.isFinite(n) || n < 0 || n > MAX_DAYS) return;
+    if (busy || !Number.isFinite(n) || n < 0 || n > MAX_DAYS) return;
     pullLocal();
     state.count = n;
     if (n > state.best) state.best = n;
@@ -534,6 +776,8 @@
   editBtn.addEventListener('click', openEdit);
   editCancel.addEventListener('click', closeEdit);
   editForm.addEventListener('submit', saveEdit);
+  keepAccountBtn.addEventListener('click', () => choose('account'));
+  keepDeviceBtn.addEventListener('click', () => choose('device'));
   teaserBtn.addEventListener('click', () => {
     const current = changesEl.querySelector('.step.current') || changesEl;
     current.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
@@ -549,8 +793,11 @@
     if (e.key === STORE_KEY && pullLocal()) render();
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && pullLocal()) render();
+    if (document.hidden) return;
+    if (pullLocal()) render();
+    if (account && (accountStatus === 'offline' || Date.now() - lastRefresh > 10000)) retry();
   });
+  window.addEventListener('online', retry);
   window.addEventListener('pageshow', () => {
     if (pullLocal()) render();
   });
@@ -738,5 +985,11 @@
   window.addEventListener('resize', resize);
   reduceMotion.addEventListener?.('change', setMotion);
   if (document.fonts) document.fonts.ready.then(() => reduceMotion.matches && drawStill());
-  if (remote) connectRemote();
+
+  // Lets account.js (or another host) plug in an account store
+  window.daysCounter = {
+    useAccounts,
+    flush,
+    snapshot: () => ({ count: state.count, best: state.best }),
+  };
 })();

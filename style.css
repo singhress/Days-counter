@@ -477,6 +477,166 @@ body {
   -webkit-appearance: none;
 }
 
+.account-entry {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* Shown when this device and the account hold different counts */
+.choice {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 36ch;
+}
+
+.choice p {
+  margin: 0;
+  font-size: 14px;
+  text-wrap: balance;
+}
+
+.choice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Account dialog */
+
+.sheet {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 20px 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 0 60px color-mix(in srgb, var(--heat) 22%, transparent);
+  overflow: auto;
+}
+
+.sheet::backdrop {
+  background: rgba(3, 4, 7, 0.72);
+}
+
+.sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet-title {
+  margin: 0;
+  font: 700 19px/1.25 var(--font-display);
+  text-wrap: balance;
+}
+
+.sheet-close {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin: -6px -8px 0 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font: 400 26px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.sheet-close:hover {
+  color: var(--fg);
+}
+
+.sheet-msg {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.sheet-msg.error {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.sheet-view {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.sheet-lead {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.sheet-lead b {
+  color: var(--fg);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.field input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--fg);
+  font: 400 16px/1.2 var(--font-body);
+}
+
+.field input:focus-visible {
+  border-color: var(--heat-hi);
+  outline: none;
+}
+
+.field-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.sheet-submit {
+  justify-content: center;
+  width: 100%;
+  padding: 13px 16px;
+  font-size: 15px;
+}
+
+.sheet-submit:disabled {
+  cursor: progress;
+}
+
+.sheet-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.sheet-anyway {
+  justify-self: center;
+  font-size: 13px;
+}
+
 /* What's changing in you */
 
 .changes {
