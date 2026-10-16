@@ -792,11 +792,14 @@
   window.addEventListener('storage', (e) => {
     if (e.key === STORE_KEY && pullLocal()) render();
   });
-  document.addEventListener('visibilitychange', () => {
+  // Coming back to the page: catch up with other tabs, then with other devices
+  function onReturn() {
     if (document.hidden) return;
     if (pullLocal()) render();
-    if (account && (accountStatus === 'offline' || Date.now() - lastRefresh > 10000)) retry();
-  });
+    if (account && (accountStatus === 'offline' || Date.now() - lastRefresh > 5000)) retry();
+  }
+  document.addEventListener('visibilitychange', onReturn);
+  window.addEventListener('focus', onReturn);
   window.addEventListener('online', retry);
   window.addEventListener('pageshow', () => {
     if (pullLocal()) render();
