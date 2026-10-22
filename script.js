@@ -87,6 +87,7 @@
   const editForm = $('edit-form');
   const editInput = $('edit-input');
   const editCancel = $('edit-cancel');
+  const glowEl = document.querySelector('.aura');
   const choiceEl = $('choice');
   const choiceText = $('choice-text');
   const keepAccountBtn = $('keep-account');
@@ -651,7 +652,8 @@
     root.style.setProperty('--calm', hsla(calm));
     root.style.setProperty('--calm-hi', hsla(calm, 1, 14));
     root.style.setProperty('--bg', bg);
-    root.style.setProperty('--aura', (0.08 + 0.42 * Math.min(heat.t, 1.2)).toFixed(3));
+    glowBase = 0.08 + 0.42 * Math.min(heat.t, 1.2);
+    root.style.setProperty('--aura', glowBase.toFixed(3));
     root.style.setProperty('--glow', (4 + 36 * heat.p).toFixed(1));
     root.style.setProperty('--p', heat.p.toFixed(4));
     if (themeMeta) themeMeta.setAttribute('content', bg);
@@ -686,18 +688,18 @@
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
   }
 
-  function popNumber(milestone) {
+  function popNumber(heat, milestone) {
     if (reduceMotion.matches || !countEl.animate) return;
-    const peak = milestone ? 1.28 : 1.14;
+    const peak = milestone ? 1.28 : 1.1 + 0.1 * Math.min(heat.t, 1.35);
     countEl.animate(
       [{ transform: 'scale(1)' }, { transform: `scale(${peak})` }, { transform: 'scale(1)' }],
       { duration: milestone ? 520 : 320, easing: 'cubic-bezier(.2,.8,.3,1)' }
     );
   }
 
-  function buzz(milestone) {
+  function buzz(heat, milestone) {
     try {
-      if (navigator.vibrate) navigator.vibrate(milestone ? [18, 40, 28] : 10);
+      if (navigator.vibrate) navigator.vibrate(milestone ? [18, 40, 28] : Math.round(8 + 14 * Math.min(heat.t, 1)));
     } catch {
       // Vibration is optional
     }
@@ -726,8 +728,8 @@
     if (change) toast.push(`Unlocked: ${change.title}`);
     if (toast.length) showToast(toast);
     pulse(heat, milestone);
-    popNumber(milestone);
-    buzz(milestone);
+    popNumber(heat, milestone);
+    buzz(heat, milestone);
   }
 
   function removeDay() {
@@ -738,7 +740,7 @@
     commit();
     render();
     msgEl.textContent = state.count ? 'One day removed.' : LINES[0][0];
-    kick = Math.min(kick + 3, 34);
+    kick = Math.min(kick + 3, kickCap(heatOf(state.count).t));
   }
 
   function openConfirm() {
@@ -846,16 +848,23 @@
    * Drawn on one canvas behind the page, and kept light enough for phones:
    * the canvas uses at most 1.25 device pixels per CSS pixel, glows are
    * layered strokes instead of canvas shadows, the loop runs at 60 fps only
-   * while something is moving (24 fps for the slow idle breathing), idle
-   * frames clear only the area around the circles, and it stops while the
-   * counter is scrolled out of view or the tab is hidden.
+   * right after a tap (30 fps for the heartbeat, 24 fps for the slow idle
+   * breathing), each frame clears only the area the last one drew on, and it
+   * stops while the counter is scrolled out of view or the tab is hidden.
+   *
+   * The movement grows with the streak: the rim churns higher and faster,
+   * and from day 1 it beats like a heart, slowly at first and quicker and
+   * harder with every level. From Flame each beat sends out a ripple, and
+   * from Supernova it throws sparks. Taps hit harder at higher levels too.
    */
 
   const MAX_DPR = 1.25;
   const ACTIVE_FRAME = 1000 / 60;
+  const BEAT_FRAME = 1000 / 30;
   const IDLE_FRAME = 1000 / 24;
   const MAX_RIPPLES = 16;
   const MAX_SPARKS = 140;
+  const BEAT_PEAK = 0.09; // seconds from a beat to the rim's fullest swell
 
   let W = 0;
   let H = 0;
@@ -863,13 +872,16 @@
   const shown = { ...target }; // what the canvas draws; eases toward target
   let phase = 0;
   let kick = 0; // extra wave height from recent taps, decays over time
+  let beatAge = 10; // seconds since the last heartbeat or tap
+  let glowBase = 0; // resting opacity of the glow behind the dial
+  let extent = 0; // how far from the dial's centre the last frame drew
   let auraPhase = 0; // the aura's breathing
   let auraWobble = 0; // the aura's flicker, fast while restless
   let running = false;
   let lastTime = 0;
   let lastDraw = 0;
   let onScreen = true;
-  let clearedWide = true; // the last frame drew beyond the circles
+  let clearAll = true; // clear the whole canvas on the next frame
   const ripples = [];
   const sparks = [];
 
@@ -877,7 +889,7 @@
   // layout or scroll position changes, not on every frame.
   const box = { cx: 0, cy: 0, R: 0, ox: 0, oy: 0, r: 0 };
   function measure() {
-    clearedWide = true; // the circles may have moved: clear everything next frame
+    clearAll = true; // the circles may have moved: clear everything next frame
     const d = dial.getBoundingClientRect();
     box.cx = d.left + d.width / 2;
     box.cy = d.top + d.height / 2;
@@ -914,37 +926,73 @@
     ctx.closePath();
   }
 
-  function pulse(heat, milestone) {
-    kick = Math.min(kick + 9 + 10 * heat.t, 34);
-    if (reduceMotion.matches) return;
+  // How high a burst of taps can throw the waves, higher at higher levels
+  const kickCap = (t) => 20 + 24 * Math.min(t, 1.35);
 
-    const t = Math.min(heat.t, 1.35);
-    const waves = milestone ? 5 : 1 + Math.round(t * 2);
-    for (let k = 0; k < waves; k++) {
-      ripples.push({
-        age: -k * 0.11,
-        life: 1.3 + t * 0.5,
-        reach: 140 + 260 * t + (milestone ? 180 : 0),
-        width: 3 + 5 * t,
-        amp: 6 + 10 * t,
-        seed: Math.random() * TAU,
-      });
-    }
+  // Seconds between heartbeats: about 3 s at day 1, 1 s at a year, faster after
+  const beatGap = (t) => 4.6 / (1 + 3.4 * t);
 
-    const sparkCount = milestone ? 48 : Math.round(t * t * 10);
-    for (let k = 0; k < sparkCount; k++) {
+  // The rim's swell after a beat: rises for BEAT_PEAK seconds, then fades
+  function thump() {
+    const s = beatAge / BEAT_PEAK;
+    return s * Math.exp(1 - s);
+  }
+
+  // The glow behind the dial flares and settles back
+  function flare(strength) {
+    if (!glowEl || !glowEl.animate) return;
+    glowEl.animate(
+      [{ opacity: glowBase }, { opacity: Math.min(glowBase + strength, 1), offset: 0.15 }, { opacity: glowBase }],
+      { duration: 700, easing: 'ease-out' }
+    );
+  }
+
+  function addRipple(age, life, reach, width, amp, alpha) {
+    ripples.push({ age, life, reach, width, amp, alpha, seed: Math.random() * TAU });
+  }
+
+  function addSparks(n, speed) {
+    for (let k = 0; k < n; k++) {
       sparks.push({
         a: Math.random() * TAU,
         d: 0,
-        v: 90 + Math.random() * (160 + 220 * t),
+        v: speed * (0.4 + Math.random()),
         age: 0,
         life: 0.6 + Math.random() * 0.7,
         size: 1 + Math.random() * 2.2,
       });
     }
+  }
+
+  function trim() {
     if (ripples.length > MAX_RIPPLES) ripples.splice(0, ripples.length - MAX_RIPPLES);
     if (sparks.length > MAX_SPARKS) sparks.splice(0, sparks.length - MAX_SPARKS);
+  }
+
+  function pulse(heat, milestone) {
+    const t = Math.min(heat.t, 1.35);
+    kick = Math.min(kick + 8 + 16 * t, kickCap(t));
+    if (reduceMotion.matches) return;
+
+    beatAge = 0; // the tap lands as a beat, and the next beat waits a full gap
+    flare(0.1 + 0.3 * Math.min(t, 1));
+    const waves = milestone ? 5 : 1 + Math.round(t * 2.5);
+    for (let k = 0; k < waves; k++) {
+      addRipple(-k * 0.11, 1.3 + t * 0.5, 140 + 300 * t + (milestone ? 180 : 0), 3 + 6 * t, 6 + 16 * t, 1);
+    }
+    addSparks(milestone ? 48 + Math.round(24 * t) : Math.round(4 * t + 16 * t * t), 160 + 260 * t);
+    trim();
     setMotion();
+  }
+
+  // A beat on its own, softer than a tap so taps still stand out
+  function heartbeat() {
+    const t = Math.min(shown.t, 1.35);
+    beatAge = 0;
+    flare(0.05 + 0.15 * Math.min(t, 1));
+    if (target.i >= 3) addRipple(0, 1.1 + 0.5 * t, 30 + 90 * t, 1.5 + 3 * t, 3 + 6 * t, 0.4);
+    if (target.i >= 6) addSparks(Math.round(4 + 8 * (t - 0.8)), 80 + 120 * t);
+    trim();
   }
 
   function step(dt) {
@@ -955,7 +1003,10 @@
     auraPhase += (dt * TAU) / (1.2 + 6.8 * calmNow);
     auraWobble += dt * (6 - 5.4 * calmNow);
     kick *= Math.exp(-dt * 2.6);
-    phase += dt * (0.7 + 1.8 * Math.min(shown.t, 1.35) + kick * 0.09);
+    phase += dt * (0.6 + 3 * Math.min(shown.t, 1.35) + kick * 0.09);
+    // No heartbeat at day 0, or while the counter is out of view
+    beatAge += dt;
+    if (target.i > 0 && onScreen && beatAge >= beatGap(Math.min(shown.t, 1.35))) heartbeat();
 
     for (let k = ripples.length - 1; k >= 0; k--) {
       ripples[k].age += dt;
@@ -970,65 +1021,71 @@
     }
   }
 
-  // Ripples, sparks, a fresh tap or a colour still easing in need full frame rate
-  function moving() {
-    return (
-      ripples.length > 0 ||
-      sparks.length > 0 ||
-      kick > 0.5 ||
-      Math.abs(target.h - shown.h) > 0.3 ||
-      Math.abs(target.calmH - shown.calmH) > 0.3
-    );
+  // A fresh tap or a colour still easing in needs full frame rate. Heartbeats,
+  // ripples and sparks look smooth at 30 fps, the slow idle breathing at 24.
+  function frameGap() {
+    if (kick > 0.5 || Math.abs(target.h - shown.h) > 0.3 || Math.abs(target.calmH - shown.calmH) > 0.3) {
+      return ACTIVE_FRAME;
+    }
+    if (ripples.length > 0 || sparks.length > 0 || beatAge < 0.6) return BEAT_FRAME;
+    return IDLE_FRAME;
   }
 
   function draw() {
     const { cx, cy, R } = box;
     const t = Math.min(shown.t, 1.35);
     const lobes = 5 + target.i; // more crests around the rim at higher levels
-    const amp = 1.2 + 4.5 * t + kick;
+    const beat = thump();
+    const rim = R + beat * (1.5 + 6 * t); // the rim swells on each beat
+    const amp = 1 + 9 * t + kick + beat * (1 + 5 * t);
 
-    // Ripples and sparks travel across the screen; otherwise everything stays
-    // close to the two circles, so only that area needs clearing
-    const wide = ripples.length > 0 || sparks.length > 0;
-    if (wide || clearedWide) {
+    // Clear only what the last frame drew: the area around the two circles,
+    // out to wherever its ripples and sparks had reached
+    if (clearAll) {
       ctx.clearRect(0, 0, W, H);
     } else {
-      const m = R + 70;
+      const m = extent;
       const o = box.r * 2.6;
-      const x0 = Math.min(cx - m, box.ox - o);
-      const y0 = Math.min(cy - m, box.oy - o);
-      ctx.clearRect(x0, y0, Math.max(cx + m, box.ox + o) - x0, Math.max(cy + m, box.oy + o) - y0);
+      const x0 = Math.max(Math.min(cx - m, box.ox - o), 0);
+      const y0 = Math.max(Math.min(cy - m, box.oy - o), 0);
+      ctx.clearRect(x0, y0, Math.min(Math.max(cx + m, box.ox + o), W) - x0, Math.min(Math.max(cy + m, box.oy + o), H) - y0);
     }
-    clearedWide = wide;
+    clearAll = false;
+    extent = 0;
     ctx.globalCompositeOperation = 'lighter';
 
     for (const rp of ripples) {
       if (rp.age < 0) continue;
       const k = rp.age / rp.life;
       const out = 1 - Math.pow(1 - k, 3);
+      const r = R + rp.reach * out;
+      const a = rp.amp * (1 - k) + 1;
       ctx.lineWidth = Math.max(0.6, rp.width * (1 - k));
-      ctx.strokeStyle = hsla(shown, Math.pow(1 - k, 1.6) * (0.55 + 0.3 * Math.min(t, 1)), 8);
-      ring(cx, cy, R + rp.reach * out, rp.amp * (1 - k) + 1, lobes, phase * 1.4 + rp.seed, 72);
+      ctx.strokeStyle = hsla(shown, rp.alpha * Math.pow(1 - k, 1.6) * (0.55 + 0.3 * Math.min(t, 1)), 8);
+      ring(cx, cy, r, a, lobes, phase * 1.4 + rp.seed, 72);
       ctx.stroke();
+      extent = Math.max(extent, r + a + ctx.lineWidth / 2 + 2);
     }
 
     // The rim, built once and stroked in layers: a wide soft halo, a glow,
-    // then the bright line itself
-    ring(cx, cy, R, amp, lobes, phase, 120);
-    ctx.lineWidth = 14 + 24 * t;
-    ctx.strokeStyle = hsla(shown, 0.06 + 0.12 * t);
+    // then the bright line itself. Each beat brightens it for a moment.
+    const halo = 14 + 24 * t;
+    ring(cx, cy, rim, amp, lobes, phase, 120);
+    ctx.lineWidth = halo;
+    ctx.strokeStyle = hsla(shown, 0.06 + 0.12 * t + 0.08 * beat);
     ctx.stroke();
     ctx.lineWidth = 6 + 10 * t;
-    ctx.strokeStyle = hsla(shown, 0.16 + 0.2 * t);
+    ctx.strokeStyle = hsla(shown, 0.16 + 0.2 * t + 0.12 * beat);
     ctx.stroke();
     ctx.lineWidth = 2.5 + 2.5 * t;
     ctx.strokeStyle = hsla(shown);
     ctx.stroke();
+    extent = Math.max(extent, rim + amp + halo / 2 + 2);
 
     // A thin bright trace moving against the rim
     ctx.lineWidth = 1.2;
     ctx.strokeStyle = hsla(shown, 0.55, 22);
-    ring(cx, cy, R, amp * 0.6, lobes + 2, -phase * 0.8 + 1.7, 120);
+    ring(cx, cy, rim, amp * 0.6, lobes + 2, -phase * 0.8 + 1.7, 120);
     ctx.stroke();
 
     if (sparks.length) {
@@ -1036,6 +1093,7 @@
       for (const sp of sparks) {
         const k = sp.age / sp.life;
         const d = R + sp.d;
+        extent = Math.max(extent, d + sp.size + 2);
         ctx.globalAlpha = (1 - k) * 0.9;
         ctx.beginPath();
         ctx.arc(cx + Math.cos(sp.a) * d, cy + Math.sin(sp.a) * d, sp.size * (1 - k * 0.5), 0, TAU);
@@ -1083,6 +1141,7 @@
     ripples.length = 0;
     sparks.length = 0;
     kick = 0;
+    beatAge = 10;
     measure();
     draw();
   }
@@ -1096,7 +1155,7 @@
       return;
     }
     requestAnimationFrame(tick);
-    if (now - lastDraw < (moving() ? ACTIVE_FRAME : IDLE_FRAME) - 2) return;
+    if (now - lastDraw < frameGap() - 2) return;
     const dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;
     lastDraw = now;

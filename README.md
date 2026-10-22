@@ -17,7 +17,9 @@ The colour moves one equal step between each level, so the first week changes fa
 | 100  | Supernova  |
 | 365  | Legend     |
 
-After 365 the colour keeps whitening until day 1000. Higher levels also add more wave crests, stronger ripples and sparks on each tap.
+After 365 the colour keeps whitening until day 1000.
+
+The circle moves more the longer the streak runs. Its rim churns higher and faster, and from day 1 it beats like a heart: about every 3 seconds at first, about once a second by a year and faster after that, with each beat swelling the rim and flaring the glow behind it. From Flame each beat also sends out a soft ripple, and from Supernova it throws sparks. Higher levels also add more wave crests, and taps hit harder, with bigger ripples, more sparks and a longer buzz.
 
 ## Aura
 
