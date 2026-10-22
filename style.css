@@ -109,16 +109,10 @@ body {
   gap: 8px;
 }
 
-.best {
+.confirm-text {
   margin: 0 4px 0 0;
   font-size: 13px;
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.best span {
-  color: var(--fg);
-  font-weight: 600;
 }
 
 .chip {

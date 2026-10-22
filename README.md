@@ -66,7 +66,7 @@ The content lives in the `CHANGES` list at the top of `script.js`, so it's easy 
 
 - Tap or press Space/Enter on the circle to add a day.
 - **−1** removes a day if you tapped by mistake.
-- **Reset** asks for confirmation and keeps your best count.
+- **Reset** asks for confirmation.
 - **Set count** lets you type a number, for example to restore your count on a new phone.
 - Respects reduced-motion settings: the colour still changes, the waves stay still.
 

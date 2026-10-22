@@ -73,7 +73,6 @@
   const tierEl = $('tier');
   const msgEl = $('msg');
   const nextEl = $('next');
-  const bestEl = $('best');
   const toastEl = $('toast');
   const undoBtn = $('undo');
   const resetBtn = $('reset');
@@ -616,7 +615,7 @@
   }
 
   function render() {
-    const { count, best } = state;
+    const { count } = state;
     const heat = heatOf(count);
     const next = TIERS[heat.i + 1];
 
@@ -624,7 +623,6 @@
     countEl.dataset.len = String(Math.min(String(count).length, 5));
     unitEl.textContent = plural(count);
     tierEl.textContent = TIERS[heat.i].name;
-    bestEl.textContent = best;
     undoBtn.disabled = busy || count === 0;
     resetBtn.disabled = busy || count === 0;
     editBtn.disabled = busy;
@@ -761,9 +759,7 @@
     state.count = 0;
     commit();
     render();
-    msgEl.textContent = state.best
-      ? `Back to zero. Your best of ${state.best} ${plural(state.best)} is saved.`
-      : LINES[0][0];
+    msgEl.textContent = 'Back to zero. Tap the circle to start again.';
     closeConfirm();
   }
 
